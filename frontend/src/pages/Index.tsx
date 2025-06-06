@@ -14,11 +14,16 @@ import { useToast } from "@/hooks/use-toast";
 import { SurveyQuestion } from "@/components/SurveyQuestion";
 import { VoiceService } from "@/services/VoiceService";
 
+interface Option {
+  value: number;
+  name: string;
+}
+
 interface Question {
   id: string;
   type: "text" | "multiple-choice" | "multi-select" | "rating";
   question: string;
-  options?: string[];
+  options?: Option[];
   required: boolean;
 }
 
@@ -38,7 +43,13 @@ const surveyQuestions: Question[] = [
     id: "2",
     type: "multiple-choice",
     question: "How would you rate your overall experience with our service?",
-    options: ["Excellent", "Good", "Average", "Poor", "Very Poor"],
+    options: [
+      { value: 1, name: "Excellent" },
+      { value: 2, name: "Good" },
+      { value: 3, name: "Average" },
+      { value: 4, name: "Poor" },
+      { value: 5, name: "Very Poor" },
+    ],
     required: true,
   },
   {
@@ -54,11 +65,11 @@ const surveyQuestions: Question[] = [
     question:
       "Which of the following features do you find most valuable? (Select all that apply)",
     options: [
-      "Customer Support",
-      "Easy to Use",
-      "Good Value",
-      "Fast Delivery",
-      "Quality Products",
+      { value: 1, name: "Customer Support" },
+      { value: 2, name: "Easy to Use" },
+      { value: 3, name: "Good Value" },
+      { value: 4, name: "Fast Delivery" },
+      { value: 5, name: "Quality Products" },
     ],
     required: true,
   },
@@ -73,11 +84,11 @@ const surveyQuestions: Question[] = [
     type: "multiple-choice",
     question: "How did you hear about us?",
     options: [
-      "Social Media",
-      "Friend Referral",
-      "Search Engine",
-      "Advertisement",
-      "Other",
+      { value: 1, name: "Social Media" },
+      { value: 2, name: "Friend Referral" },
+      { value: 3, name: "Search Engine" },
+      { value: 4, name: "Advertisement" },
+      { value: 5, name: "Other" },
     ],
     required: true,
   },
@@ -123,6 +134,20 @@ const Index = () => {
     }
   }, [currentQuestionIndex, isVoiceEnabled]);
 
+  useEffect(() => {
+    // Set start time when component mounts
+    if (!localStorage.getItem("startTime")) {
+      localStorage.setItem("startTime", new Date().toISOString());
+    }
+  }, []);
+
+  const calculateElapsedTime = () => {
+    const startTime = new Date(
+      localStorage.getItem("startTime") || new Date().toISOString()
+    ).getTime();
+    return Math.floor((Date.now() - startTime) / 1000); // Convert to seconds
+  };
+
   const readQuestion = async () => {
     if (!isVoiceEnabled) return;
 
@@ -137,7 +162,7 @@ const Index = () => {
         currentQuestion.options
       ) {
         textToRead += ". Your options are: ";
-        textToRead += currentQuestion.options.join(", ");
+        textToRead += currentQuestion.options.map((opt) => opt.name).join(", ");
 
         if (currentQuestion.type === "multi-select") {
           textToRead +=
@@ -169,11 +194,7 @@ const Index = () => {
 
   // Function to match voice input to multiple choice options
   const matchVoiceToOption = (voiceInput: string): string => {
-    if (
-      (currentQuestion.type !== "multiple-choice" &&
-        currentQuestion.type !== "multi-select") ||
-      !currentQuestion.options
-    ) {
+    if (!currentQuestion.options && currentQuestion.type !== "rating") {
       return voiceInput;
     }
 
@@ -186,7 +207,7 @@ const Index = () => {
     );
 
     // For multi-select, handle multiple selections separated by "and"
-    if (currentQuestion.type === "multi-select") {
+    if (currentQuestion.type === "multi-select" && currentQuestion.options) {
       const inputParts = normalizedInput.split(/\s+and\s+|\s*,\s*/);
       const matchedOptions: string[] = [];
 
@@ -195,21 +216,21 @@ const Index = () => {
 
         // Find exact match
         const exactMatch = currentQuestion.options?.find(
-          (option) => option.toLowerCase() === trimmedPart
+          (option) => option.name.toLowerCase() === trimmedPart
         );
-        if (exactMatch && !matchedOptions.includes(exactMatch)) {
-          matchedOptions.push(exactMatch);
+        if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
+          matchedOptions.push(exactMatch.name);
           return;
         }
 
         // Find partial match
         const partialMatch = currentQuestion.options?.find(
           (option) =>
-            option.toLowerCase().includes(trimmedPart) ||
-            trimmedPart.includes(option.toLowerCase())
+            option.name.toLowerCase().includes(trimmedPart) ||
+            trimmedPart.includes(option.name.toLowerCase())
         );
-        if (partialMatch && !matchedOptions.includes(partialMatch)) {
-          matchedOptions.push(partialMatch);
+        if (partialMatch && !matchedOptions.includes(partialMatch.name)) {
+          matchedOptions.push(partialMatch.name);
         }
       });
 
@@ -220,27 +241,29 @@ const Index = () => {
     }
 
     // For single select questions
-    // Find exact match (case insensitive)
-    const exactMatch = currentQuestion.options.find(
-      (option) => option.toLowerCase() === normalizedInput
-    );
-    if (exactMatch) {
-      console.log("Exact match found:", exactMatch);
-      return exactMatch;
+    if (currentQuestion.type === "multiple-choice" && currentQuestion.options) {
+      // Find exact match (case insensitive)
+      const exactMatch = currentQuestion.options.find(
+        (option) => option.name.toLowerCase() === normalizedInput
+      );
+      if (exactMatch) {
+        console.log("Exact match found:", exactMatch.name);
+        return exactMatch.name;
+      }
+
+      // Find partial match
+      const partialMatch = currentQuestion.options.find(
+        (option) =>
+          option.name.toLowerCase().includes(normalizedInput) ||
+          normalizedInput.includes(option.name.toLowerCase())
+      );
+      if (partialMatch) {
+        console.log("Partial match found:", partialMatch.name);
+        return partialMatch.name;
+      }
     }
 
-    // Find partial match
-    const partialMatch = currentQuestion.options.find(
-      (option) =>
-        option.toLowerCase().includes(normalizedInput) ||
-        normalizedInput.includes(option.toLowerCase())
-    );
-    if (partialMatch) {
-      console.log("Partial match found:", partialMatch);
-      return partialMatch;
-    }
-
-    // For rating questions, extract numbers
+    // For rating questions
     if (currentQuestion.type === "rating") {
       const numberMatch = voiceInput.match(/\b(\d+)\b/);
       if (numberMatch) {
@@ -306,6 +329,11 @@ const Index = () => {
   };
 
   const handleAnswerChange = (answer: string) => {
+    console.log("Handling answer change:", {
+      questionId: currentQuestion.id,
+      answer,
+    }); // Debug log
+
     const existingAnswerIndex = answers.findIndex(
       (a) => a.questionId === currentQuestion.id
     );
@@ -319,8 +347,7 @@ const Index = () => {
       setAnswers([...answers, newAnswer]);
     }
 
-    console.log("Answer stored:", newAnswer);
-    console.log("All answers:", [...answers, newAnswer]);
+    console.log("Updated answers state:", [...answers, newAnswer]); // Debug log
   };
 
   const getCurrentAnswer = () => {
@@ -349,7 +376,55 @@ const Index = () => {
       return v.toString(16);
     });
   }
+
+  const formatResponses = (answers: Answer[]) => {
+    console.log("Formatting answers:", answers); // Debug log
+
+    const formattedResponses: { [key: string]: string | number } = {};
+
+    answers.forEach((answer) => {
+      // Skip empty answers
+      if (!answer.answer.trim()) return;
+
+      const question = surveyQuestions.find((q) => q.id === answer.questionId);
+      if (!question) return;
+
+      if (question.type === "multi-select" && answer.answer.includes(",")) {
+        // Handle multi-select answers as separate numbered fields
+        const selectedNames = answer.answer
+          .split(",")
+          .map((ans) => ans.trim())
+          .filter((ans) => ans);
+
+        selectedNames.forEach((name, index) => {
+          const option = question.options?.find((opt) => opt.name === name);
+          if (option) {
+            formattedResponses[`q${answer.questionId}_${index + 1}`] =
+              option.value;
+          }
+        });
+      } else if (question.options) {
+        // For multiple choice questions, save the value instead of the name
+        const option = question.options.find(
+          (opt) => opt.name === answer.answer.trim()
+        );
+        if (option) {
+          formattedResponses[`q${answer.questionId}`] = option.value;
+        }
+      } else {
+        // For text and rating questions, save as is
+        formattedResponses[`q${answer.questionId}`] = answer.answer.trim();
+      }
+    });
+
+    console.log("Formatted responses:", formattedResponses); // Debug log
+    return formattedResponses;
+  };
+
   const saveIncompleteResponse = async () => {
+    const formattedResponses = formatResponses(answers);
+    console.log("Current answers state:", answers); // Debug log
+
     const payload = {
       unique_id: localStorage.getItem("unique_id") || generateUUID(),
       sys_start_time:
@@ -357,18 +432,17 @@ const Index = () => {
       sys_end_time: new Date().toISOString(),
       sys_device: navigator.userAgent,
       survey_status: "incomplete",
-      elapsed_time: Date.now() - Number(localStorage.getItem("startTime")),
+      elapsed_time: calculateElapsedTime(),
       language: "en",
-      responses: answers,
+      ...formattedResponses,
     };
+
+    console.log("Saving incomplete response payload:", payload); // Debug log
 
     // Store unique_id and startTime in localStorage if not already present
     if (!localStorage.getItem("unique_id")) {
       localStorage.setItem("unique_id", payload.unique_id);
     }
-    if (!localStorage.getItem("startTime")) {
-      localStorage.setItem("startTime", payload.sys_start_time);
-    }
 
     try {
       const res = await fetch("http://localhost:5000/api/survey/save", {
@@ -377,75 +451,91 @@ const Index = () => {
         body: JSON.stringify(payload),
       });
       const data = await res.json();
-      console.log("Incomplete survey saved:", data);
+      console.log("Response from server for incomplete save:", data); // Debug log
     } catch (err) {
       console.error("Error saving incomplete survey:", err);
     }
   };
 
-  const saveSurveyResponse = async (finalAnswers: Answer[]) => {
-    const payload = {
-      unique_id: generateUUID(),
-      sys_start_time: localStorage.getItem("startTime"), // set this on page load
-      sys_end_time: new Date(),
-      sys_device: navigator.userAgent,
-      survey_status: "completed",
-      elapsed_time: Date.now() - Number(localStorage.getItem("startTime")),
-      language: "en",
-      responses: finalAnswers,
-    };
-
-    try {
-      const res = await fetch("http://localhost:5000/api/survey/save", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      console.log("Survey saved:", data);
-    } catch (err) {
-      console.error("Error saving survey:", err);
-    }
-  };
-
   const handleSubmit = async () => {
+    console.log("Submitting answers:", answers); // Debug log
+
+    // Validate required questions
+    const missingRequired = surveyQuestions
+      .filter((q) => q.required)
+      .filter(
+        (q) => !answers.find((a) => a.questionId === q.id && a.answer.trim())
+      );
+
+    if (missingRequired.length > 0) {
+      toast({
+        title: "Required Questions",
+        description: "Please answer all required questions before submitting.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const formattedResponses = formatResponses(answers);
+    const startTime =
+      localStorage.getItem("startTime") || new Date().toISOString();
+
     const payload = {
       unique_id: localStorage.getItem("unique_id") || generateUUID(),
-      sys_start_time:
-        localStorage.getItem("startTime") || new Date().toISOString(),
+      sys_start_time: startTime,
       sys_end_time: new Date().toISOString(),
       sys_device: navigator.userAgent,
       survey_status: "completed",
-      elapsed_time: Date.now() - Number(localStorage.getItem("startTime")),
+      elapsed_time: calculateElapsedTime(),
       language: "en",
-      responses: answers,
+      ...formattedResponses,
     };
+
+    console.log("Submitting payload:", payload); // Debug log
 
     try {
       const res = await fetch("http://localhost:5000/api/survey/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify(payload),
       });
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
       const data = await res.json();
-      console.log("Survey completed and saved:", data);
+      console.log("Server response:", data); // Debug log
+
+      if (data.savedData) {
+        console.log("Saved survey data:", data.savedData); // Debug log
+      }
+
+      // Only clear storage and state after successful save
+      localStorage.removeItem("unique_id");
+      localStorage.removeItem("startTime");
+      localStorage.removeItem("surveyAnswers");
+
+      setCurrentQuestionIndex(0);
+      setAnswers([]);
+
+      toast({
+        title: "Survey Completed",
+        description:
+          "Thank you for your responses! Your feedback has been saved.",
+      });
     } catch (err) {
-      console.error("Error saving completed survey:", err);
+      console.error("Error saving survey:", err);
+      toast({
+        title: "Error",
+        description:
+          "There was an error saving your responses. Please try again.",
+        variant: "destructive",
+      });
     }
-
-    toast({
-      title: "Survey Completed",
-      description:
-        "Thank you for your responses! Your feedback has been saved.",
-    });
-
-    // Clear stored data
-    localStorage.removeItem("unique_id");
-    localStorage.removeItem("startTime");
-    localStorage.removeItem("surveyAnswers");
-
-    setCurrentQuestionIndex(0);
-    setAnswers([]);
   };
 
   const handleNext = () => {
@@ -472,28 +562,6 @@ const Index = () => {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
-
-  // const handleSubmit = () => {
-  //   // Store final answers to localStorage with timestamp
-  //   const finalSurveyData = {
-  //     answers,
-  //     submittedAt: new Date().toISOString(),
-  //     surveyId: `survey_${Date.now()}`
-  //   };
-
-  //   localStorage.setItem('completedSurvey', JSON.stringify(finalSurveyData));
-  //   console.log('Survey completed and stored:', finalSurveyData);
-
-  //   toast({
-  //     title: "Survey Completed",
-  //     description: "Thank you for your responses! Your feedback has been saved.",
-  //   });
-
-  //   // Reset survey
-  //   setCurrentQuestionIndex(0);
-  //   setAnswers([]);
-  //   localStorage.removeItem('surveyAnswers'); // Clear in-progress answers
-  // };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">

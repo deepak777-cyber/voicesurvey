@@ -8,11 +8,16 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Mic, MicOff } from "lucide-react";
 
+interface Option {
+  value: number;
+  name: string;
+}
+
 interface Question {
   id: string;
   type: "text" | "multiple-choice" | "multi-select" | "rating";
   question: string;
-  options?: string[];
+  options?: Option[];
   required: boolean;
 }
 
@@ -122,24 +127,26 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
     onAnswerChange(value[0].toString());
   };
 
-  const handleMultiSelectChange = (option: string, checked: boolean) => {
+  const handleMultiSelectChange = (optionName: string, checked: boolean) => {
     const currentSelections = answer ? answer.split(",").filter(Boolean) : [];
 
     if (checked) {
-      if (!currentSelections.includes(option)) {
-        const newSelections = [...currentSelections, option];
+      if (!currentSelections.includes(optionName)) {
+        const newSelections = [...currentSelections, optionName];
         onAnswerChange(newSelections.join(","));
       }
     } else {
-      const newSelections = currentSelections.filter((item) => item !== option);
+      const newSelections = currentSelections.filter(
+        (item) => item !== optionName
+      );
       onAnswerChange(newSelections.join(","));
     }
   };
 
-  const isOptionSelected = (option: string): boolean => {
+  const isOptionSelected = (optionName: string): boolean => {
     if (!answer) return false;
     const selections = answer.split(",").filter(Boolean);
-    return selections.includes(option);
+    return selections.includes(optionName);
   };
 
   // Function to match voice input to multiple choice options
@@ -168,10 +175,10 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
         // Try exact match first
         const exactMatch = question.options?.find(
           (option) =>
-            option.toLowerCase().replace(/[^\w\s]/g, "") === trimmedPart
+            option.name.toLowerCase().replace(/[^\w\s]/g, "") === trimmedPart
         );
-        if (exactMatch && !matchedOptions.includes(exactMatch)) {
-          matchedOptions.push(exactMatch);
+        if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
+          matchedOptions.push(exactMatch.name);
           return;
         }
 
@@ -180,7 +187,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           ?.map((option) => ({
             option,
             distance: levenshteinDistance(
-              option.toLowerCase().replace(/[^\w\s]/g, ""),
+              option.name.toLowerCase().replace(/[^\w\s]/g, ""),
               trimmedPart
             ),
           }))
@@ -190,7 +197,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           fuzzyMatches &&
           fuzzyMatches[0].distance <= Math.min(3, trimmedPart.length / 3)
         ) {
-          const bestMatch = fuzzyMatches[0].option;
+          const bestMatch = fuzzyMatches[0].option.name;
           if (!matchedOptions.includes(bestMatch)) {
             matchedOptions.push(bestMatch);
           }
@@ -206,11 +213,11 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
     // For single selection, try exact match first
     const exactMatch = question.options.find(
       (option) =>
-        option.toLowerCase().replace(/[^\w\s]/g, "") === normalizedInput
+        option.name.toLowerCase().replace(/[^\w\s]/g, "") === normalizedInput
     );
     if (exactMatch) {
-      console.log("Exact match found:", exactMatch);
-      return exactMatch;
+      console.log("Exact match found:", exactMatch.name);
+      return exactMatch.name;
     }
 
     // Try fuzzy matching for single selection
@@ -218,15 +225,15 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
       .map((option) => ({
         option,
         distance: levenshteinDistance(
-          option.toLowerCase().replace(/[^\w\s]/g, ""),
+          option.name.toLowerCase().replace(/[^\w\s]/g, ""),
           normalizedInput
         ),
       }))
       .sort((a, b) => a.distance - b.distance);
 
     if (fuzzyMatches[0].distance <= Math.min(3, normalizedInput.length / 3)) {
-      console.log("Fuzzy match found:", fuzzyMatches[0].option);
-      return fuzzyMatches[0].option;
+      console.log("Fuzzy match found:", fuzzyMatches[0].option.name);
+      return fuzzyMatches[0].option.name;
     }
 
     // For rating questions, extract numbers and validate range
@@ -353,14 +360,17 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
               onValueChange={onAnswerChange}
               className="space-y-3"
             >
-              {question.options?.map((option, index) => (
-                <div key={index} className="flex items-center space-x-2">
-                  <RadioGroupItem value={option} id={`option-${index}`} />
+              {question.options?.map((option) => (
+                <div key={option.value} className="flex items-center space-x-2">
+                  <RadioGroupItem
+                    value={option.name}
+                    id={`option-${option.value}`}
+                  />
                   <Label
-                    htmlFor={`option-${index}`}
+                    htmlFor={`option-${option.value}`}
                     className="text-lg cursor-pointer flex-1 py-2"
                   >
-                    {option}
+                    {option.name}
                   </Label>
                 </div>
               ))}
@@ -378,20 +388,20 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
         return (
           <div className="space-y-4">
             <div className="space-y-3">
-              {question.options?.map((option, index) => (
-                <div key={index} className="flex items-center space-x-3">
+              {question.options?.map((option) => (
+                <div key={option.value} className="flex items-center space-x-3">
                   <Checkbox
-                    id={`multi-option-${index}`}
-                    checked={isOptionSelected(option)}
+                    id={`multi-option-${option.value}`}
+                    checked={isOptionSelected(option.name)}
                     onCheckedChange={(checked) =>
-                      handleMultiSelectChange(option, !!checked)
+                      handleMultiSelectChange(option.name, !!checked)
                     }
                   />
                   <Label
-                    htmlFor={`multi-option-${index}`}
+                    htmlFor={`multi-option-${option.value}`}
                     className="text-lg cursor-pointer flex-1 py-2"
                   >
-                    {option}
+                    {option.name}
                   </Label>
                 </div>
               ))}
