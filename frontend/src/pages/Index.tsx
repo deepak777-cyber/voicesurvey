@@ -141,6 +141,15 @@ const Index = () => {
     }
   }, []);
 
+  useEffect(() => {
+    // Clear answers and other data when component mounts
+    localStorage.removeItem("surveyAnswers");
+    localStorage.removeItem("unique_id");
+    localStorage.removeItem("startTime");
+    setAnswers([]);
+    setCurrentQuestionIndex(0);
+  }, []); // Empty dependency array means this runs once when component mounts
+
   const calculateElapsedTime = () => {
     const startTime = new Date(
       localStorage.getItem("startTime") || new Date().toISOString()
@@ -458,7 +467,7 @@ const Index = () => {
   };
 
   const handleSubmit = async () => {
-    console.log("Submitting answers:", answers); // Debug log
+    console.log("Submitting answers:", answers);
 
     // Validate required questions
     const missingRequired = surveyQuestions
@@ -491,7 +500,7 @@ const Index = () => {
       ...formattedResponses,
     };
 
-    console.log("Submitting payload:", payload); // Debug log
+    console.log("Submitting payload:", payload);
 
     try {
       const res = await fetch("http://localhost:5000/api/survey/save", {
@@ -508,25 +517,21 @@ const Index = () => {
       }
 
       const data = await res.json();
-      console.log("Server response:", data); // Debug log
+      console.log("Server response:", data);
 
-      if (data.savedData) {
-        console.log("Saved survey data:", data.savedData); // Debug log
-      }
-
-      // Only clear storage and state after successful save
-      localStorage.removeItem("unique_id");
-      localStorage.removeItem("startTime");
-      localStorage.removeItem("surveyAnswers");
-
-      setCurrentQuestionIndex(0);
+      // Clear all stored data
+      localStorage.clear(); // This will clear all localStorage items
       setAnswers([]);
+      setCurrentQuestionIndex(0);
 
       toast({
         title: "Survey Completed",
         description:
           "Thank you for your responses! Your feedback has been saved.",
       });
+
+      // Optional: Reload the page to start fresh
+      window.location.reload();
     } catch (err) {
       console.error("Error saving survey:", err);
       toast({
