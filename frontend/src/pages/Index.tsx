@@ -13,6 +13,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { SurveyQuestion } from "@/components/SurveyQuestion";
 import { VoiceService } from "@/services/VoiceService";
+import { ThankYou } from "@/components/ThankYou";
 
 interface Option {
   value: number;
@@ -106,6 +107,7 @@ const Index = () => {
   const [voiceService] = useState(() => new VoiceService());
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const { toast } = useToast();
+  const [showThankYou, setShowThankYou] = useState(false);
 
   const currentQuestion = surveyQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
@@ -466,6 +468,13 @@ const Index = () => {
     }
   };
 
+  const handleStartNewSurvey = () => {
+    setShowThankYou(false);
+    setCurrentQuestionIndex(0);
+    setAnswers([]);
+    localStorage.clear();
+  };
+
   const handleSubmit = async () => {
     console.log("Submitting answers:", answers);
 
@@ -520,18 +529,15 @@ const Index = () => {
       console.log("Server response:", data);
 
       // Clear all stored data
-      localStorage.clear(); // This will clear all localStorage items
+      localStorage.clear();
       setAnswers([]);
-      setCurrentQuestionIndex(0);
+      setShowThankYou(true); // Show thank you page instead of reloading
 
       toast({
         title: "Survey Completed",
         description:
           "Thank you for your responses! Your feedback has been saved.",
       });
-
-      // Optional: Reload the page to start fresh
-      window.location.reload();
     } catch (err) {
       console.error("Error saving survey:", err);
       toast({
@@ -567,6 +573,10 @@ const Index = () => {
       setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
+
+  if (showThankYou) {
+    return <ThankYou onStartNewSurvey={handleStartNewSurvey} />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
