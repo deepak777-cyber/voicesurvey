@@ -30,6 +30,7 @@ interface SurveyQuestionProps {
   onStopRecording: () => void;
   voiceEnabled: boolean;
   isSpeaking: boolean;
+  onStopSpeaking: () => void;
 }
 
 export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
@@ -41,6 +42,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   onStopRecording: parentStopRecording,
   voiceEnabled,
   isSpeaking,
+  onStopSpeaking,
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -48,6 +50,9 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = async () => {
+    if (isSpeaking) {
+      onStopSpeaking();
+    }
     setError(null);
     setIsProcessing(false);
     parentStartRecording();
@@ -292,7 +297,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           variant={isListening ? "destructive" : "outline"}
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
-          disabled={isProcessing || isSpeaking}
+          disabled={isProcessing}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
             isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
           }`}
@@ -301,7 +306,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           {isProcessing
             ? "Processing..."
             : isSpeaking
-            ? "Reading..."
+            ? "Tap to Record"
             : isListening
             ? "Tap to Stop"
             : "Tap to Record"}

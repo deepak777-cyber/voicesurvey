@@ -189,14 +189,21 @@ const Index = () => {
 
       await voiceService.speak(textToRead);
     } catch (error) {
-      console.error("Error reading question:", error);
-      // Only show error toast if it's a real error, not just an end event
-      if (error instanceof Error && error.message !== "Speech ended") {
+      // Only show error toast for critical speech synthesis errors
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Speech error:") &&
+        !error.message.includes("interrupted")
+      ) {
+        console.error("Critical speech error:", error);
         toast({
           title: "Voice Error",
           description: "Could not read the question aloud.",
           variant: "destructive",
         });
+      } else {
+        // Log non-critical errors for debugging but don't show toast
+        console.log("Non-critical speech event:", error);
       }
     } finally {
       setIsSpeaking(false);
@@ -205,88 +212,101 @@ const Index = () => {
 
   // Function to match voice input to multiple choice options
   const matchVoiceToOption = (voiceInput: string): string => {
-    if (!currentQuestion.options && currentQuestion.type !== "rating") {
+    if (!currentQuestion.options) {
+      return voiceInput;
+    }
+
+    // For rating questions (1-10), convert words to numbers and validate
+    if (currentQuestion.type === "rating") {
+      const normalizedInput = voiceInput.toLowerCase().trim();
+
+      // Word to number mapping
+      const wordToNumber: { [key: string]: string } = {
+        one: "1",
+        first: "1",
+        two: "2",
+        second: "2",
+        three: "3",
+        third: "3",
+        four: "4",
+        fourth: "4",
+        five: "5",
+        fifth: "5",
+        six: "6",
+        sixth: "6",
+        seven: "7",
+        seventh: "7",
+        eight: "8",
+        eighth: "8",
+        nine: "9",
+        ninth: "9",
+        ten: "10",
+        tenth: "10",
+      };
+
+      // Try to match word numbers first
+      for (const [word, num] of Object.entries(wordToNumber)) {
+        if (normalizedInput.includes(word)) {
+          return num;
+        }
+      }
+
+      // Try to match digits (including variations like "number 5" or "rating 8")
+      const numberMatch = normalizedInput.match(/\b(\d+)\b/);
+      if (numberMatch) {
+        const number = parseInt(numberMatch[1]);
+        if (number >= 1 && number <= 10) {
+          return number.toString();
+        }
+      }
+
       return voiceInput;
     }
 
     const normalizedInput = voiceInput.toLowerCase().trim();
-    console.log(
-      "Matching voice input:",
-      normalizedInput,
-      "to options:",
-      currentQuestion.options
-    );
 
-    // For multi-select, handle multiple selections separated by "and"
+    // For multi-select questions, handle multiple selections
     if (currentQuestion.type === "multi-select" && currentQuestion.options) {
       const inputParts = normalizedInput.split(/\s+and\s+|\s*,\s*/);
       const matchedOptions: string[] = [];
 
       inputParts.forEach((part) => {
         const trimmedPart = part.trim();
-
-        // Find exact match
-        const exactMatch = currentQuestion.options?.find(
-          (option) => option.name.toLowerCase() === trimmedPart
-        );
-        if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
-          matchedOptions.push(exactMatch.name);
-          return;
-        }
-
-        // Find partial match
-        const partialMatch = currentQuestion.options?.find(
+        const match = currentQuestion.options?.find(
           (option) =>
+            option.name.toLowerCase() === trimmedPart ||
             option.name.toLowerCase().includes(trimmedPart) ||
             trimmedPart.includes(option.name.toLowerCase())
         );
-        if (partialMatch && !matchedOptions.includes(partialMatch.name)) {
-          matchedOptions.push(partialMatch.name);
+        if (match && !matchedOptions.includes(match.name)) {
+          matchedOptions.push(match.name);
         }
       });
 
-      if (matchedOptions.length > 0) {
-        console.log("Multi-select matches found:", matchedOptions);
-        return matchedOptions.join(",");
-      }
+      return matchedOptions.length > 0 ? matchedOptions.join(",") : voiceInput;
     }
 
     // For single select questions
     if (currentQuestion.type === "multiple-choice" && currentQuestion.options) {
-      // Find exact match (case insensitive)
+      // Try exact match first
       const exactMatch = currentQuestion.options.find(
         (option) => option.name.toLowerCase() === normalizedInput
       );
       if (exactMatch) {
-        console.log("Exact match found:", exactMatch.name);
         return exactMatch.name;
       }
 
-      // Find partial match
+      // Try partial match if no exact match found
       const partialMatch = currentQuestion.options.find(
         (option) =>
           option.name.toLowerCase().includes(normalizedInput) ||
           normalizedInput.includes(option.name.toLowerCase())
       );
       if (partialMatch) {
-        console.log("Partial match found:", partialMatch.name);
         return partialMatch.name;
       }
     }
 
-    // For rating questions
-    if (currentQuestion.type === "rating") {
-      const numberMatch = voiceInput.match(/\b(\d+)\b/);
-      if (numberMatch) {
-        const number = parseInt(numberMatch[1]);
-        if (number >= 1 && number <= 10) {
-          console.log("Number extracted for rating:", number);
-          return number.toString();
-        }
-      }
-    }
-
-    console.log("No match found, returning original input:", voiceInput);
     return voiceInput;
   };
 
@@ -365,11 +385,6 @@ const Index = () => {
   };
 
   const handleAnswerChange = (answer: string) => {
-    console.log("Handling answer change:", {
-      questionId: currentQuestion.id,
-      answer,
-    }); // Debug log
-
     const existingAnswerIndex = answers.findIndex(
       (a) => a.questionId === currentQuestion.id
     );
@@ -382,8 +397,6 @@ const Index = () => {
     } else {
       setAnswers([...answers, newAnswer]);
     }
-
-    console.log("Updated answers state:", [...answers, newAnswer]); // Debug log
   };
 
   const getCurrentAnswer = () => {
@@ -599,6 +612,11 @@ const Index = () => {
     }
   };
 
+  const handleStopSpeaking = () => {
+    voiceService.stopSpeaking();
+    setIsSpeaking(false);
+  };
+
   if (showThankYou) {
     return <ThankYou onStartNewSurvey={handleStartNewSurvey} />;
   }
@@ -664,6 +682,7 @@ const Index = () => {
             onStopRecording={stopVoiceRecording}
             voiceEnabled={isVoiceEnabled}
             isSpeaking={isSpeaking}
+            onStopSpeaking={handleStopSpeaking}
           />
         </Card>
 

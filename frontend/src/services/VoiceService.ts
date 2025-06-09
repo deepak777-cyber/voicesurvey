@@ -17,6 +17,10 @@ interface SpeechRecognition extends EventTarget {
   onend: (() => void) | null;
   onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
   onstart?: (() => void) | null;
+  onaudiostart?: (() => void) | null;
+  onsoundstart?: (() => void) | null;
+  onspeechstart?: (() => void) | null;
+  maxAlternatives: number;
 }
 
 interface SpeechRecognitionEvent extends Event {
@@ -64,21 +68,39 @@ export class VoiceService {
   initialize(): boolean {
     if (this.isInitialized) return true;
 
-    // Check if speech recognition is supported
     const SpeechRecognitionClass =
       window.SpeechRecognition || (window as any).webkitSpeechRecognition;
 
     if (!SpeechRecognitionClass) {
-      console.warn("Speech recognition not supported in this browser");
+      console.error("Speech recognition not supported in this browser");
       return false;
     }
 
     this.recognition = new SpeechRecognitionClass();
-    this.recognition.continuous = false; // Changed to false for better control
+    this.recognition.continuous = false;
     this.recognition.interimResults = true;
     this.recognition.lang = "en-US";
 
+    // Add event listeners for all recognition events
+    this.recognition.onstart = () => {
+      console.log("Speech recognition started");
+      this.isListening = true;
+    };
+
+    this.recognition.onaudiostart = () => {
+      console.log("Audio capturing started");
+    };
+
+    this.recognition.onsoundstart = () => {
+      console.log("Sound detected");
+    };
+
+    this.recognition.onspeechstart = () => {
+      console.log("Speech detected");
+    };
+
     this.isInitialized = true;
+    console.log("Speech recognition initialized");
     return true;
   }
 
@@ -89,7 +111,6 @@ export class VoiceService {
         return;
       }
 
-      // Cancel any ongoing speech
       this.synthesis.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
@@ -108,80 +129,69 @@ export class VoiceService {
   async startListening(): Promise<string> {
     return new Promise((resolve, reject) => {
       if (!this.recognition) {
+        console.error("Speech recognition not initialized");
         reject(new Error("Speech recognition not initialized"));
         return;
       }
 
+      // If already listening, stop first
       if (this.isListening) {
-        reject(new Error("Already listening"));
-        return;
+        console.log("Already listening, stopping first...");
+        this.stopListening();
       }
 
-      let finalTranscript = "";
-      let hasRecognizedSpeech = false;
-
       this.recognition.onresult = (event) => {
-        hasRecognizedSpeech = true;
         let interimTranscript = "";
+        let finalTranscript = "";
 
+        // Process results
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
+          const confidence = event.results[i][0].confidence;
+
           if (event.results[i].isFinal) {
-            finalTranscript = transcript; // Only keep the last final result
+            finalTranscript = transcript;
+            console.log(
+              "Final transcript:",
+              finalTranscript,
+              "Confidence:",
+              confidence
+            );
+            this.stopListening();
+            resolve(finalTranscript.trim());
           } else {
-            interimTranscript += transcript;
+            interimTranscript = transcript;
+            console.log(
+              "Interim transcript:",
+              interimTranscript,
+              "Confidence:",
+              confidence
+            );
           }
         }
-
-        console.log("Final transcript:", finalTranscript);
-        console.log("Interim transcript:", interimTranscript);
       };
 
       this.recognition.onend = () => {
-        this.isListening = false;
         console.log("Speech recognition ended");
-
-        if (!hasRecognizedSpeech) {
+        this.isListening = false;
+        if (!this.recognition?.onresult) {
+          console.log("No speech detected");
           reject(new Error("No speech detected"));
-          return;
         }
-
-        if (!finalTranscript.trim()) {
-          reject(new Error("Could not transcribe audio"));
-          return;
-        }
-
-        resolve(finalTranscript.trim());
       };
 
       this.recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
         this.isListening = false;
-
-        switch (event.error) {
-          case "no-speech":
-            reject(new Error("No speech detected"));
-            break;
-          case "aborted":
-            reject(new Error("Recording stopped"));
-            break;
-          case "audio-capture":
-            reject(new Error("No microphone detected"));
-            break;
-          case "not-allowed":
-            reject(new Error("Microphone access denied"));
-            break;
-          default:
-            reject(new Error(`Recognition error: ${event.error}`));
-        }
+        reject(new Error(event.error));
       };
 
       try {
-        console.log("Starting speech recognition...");
+        console.log("Attempting to start speech recognition...");
         this.recognition.start();
-        this.isListening = true;
+        console.log("Speech recognition started successfully");
       } catch (error) {
-        console.error("Error starting recognition:", error);
+        console.error("Error starting speech recognition:", error);
         this.isListening = false;
         reject(error);
       }
@@ -191,9 +201,11 @@ export class VoiceService {
   stopListening(): void {
     if (this.recognition && this.isListening) {
       try {
+        console.log("Stopping speech recognition...");
         this.recognition.stop();
+        console.log("Speech recognition stopped");
       } catch (error) {
-        console.error("Error stopping recognition:", error);
+        console.error("Error stopping speech recognition:", error);
       }
       this.isListening = false;
     }
