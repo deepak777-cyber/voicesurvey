@@ -29,6 +29,7 @@ interface SurveyQuestionProps {
   onStartRecording: () => void;
   onStopRecording: () => void;
   voiceEnabled: boolean;
+  isSpeaking: boolean;
 }
 
 export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
@@ -39,47 +40,26 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   onStartRecording: parentStartRecording,
   onStopRecording: parentStopRecording,
   voiceEnabled,
+  isSpeaking,
 }) => {
   const [error, setError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      chunksRef.current = [];
-
-      mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
-          chunksRef.current.push(e.data);
-        }
-      };
-
-      mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(chunksRef.current, { type: "audio/wav" });
-        await transcribeAudio(audioBlob);
-        stream.getTracks().forEach((track) => track.stop());
-      };
-
-      mediaRecorder.start();
-      parentStartRecording();
-      setError(null);
-    } catch (err) {
-      console.error("Failed to start recording:", err);
-      setError("Failed to access microphone");
-    }
+    setError(null);
+    setIsProcessing(false);
+    parentStartRecording();
   };
 
   const stopRecording = () => {
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state === "recording"
-    ) {
-      mediaRecorderRef.current.stop();
-      parentStopRecording();
-    }
+    setIsProcessing(true);
+    parentStopRecording();
+    // Reset processing state after a delay
+    setTimeout(() => {
+      setIsProcessing(false);
+    }, 1000);
   };
 
   const transcribeAudio = async (audioBlob: Blob) => {
@@ -312,12 +292,19 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           variant={isListening ? "destructive" : "outline"}
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
+          disabled={isProcessing || isSpeaking}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
             isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
           }`}
         >
           {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-          {isListening ? "Tap to Stop" : "Tap to Record"}
+          {isProcessing
+            ? "Processing..."
+            : isSpeaking
+            ? "Reading..."
+            : isListening
+            ? "Tap to Stop"
+            : "Tap to Record"}
         </Button>
         {isListening && (
           <div className="mt-4 text-center">

@@ -313,9 +313,34 @@ const Index = () => {
       }
     } catch (error) {
       console.error("Error recording voice:", error);
+      let errorMessage = "Could not record your voice. Please try again.";
+
+      if (error instanceof Error) {
+        switch (error.message) {
+          case "No speech detected":
+            errorMessage = "No speech was detected. Please try speaking again.";
+            break;
+          case "Could not transcribe audio":
+            errorMessage =
+              "Could not understand the audio. Please try speaking more clearly.";
+            break;
+          case "No microphone detected":
+            errorMessage =
+              "No microphone found. Please check your microphone connection.";
+            break;
+          case "Microphone access denied":
+            errorMessage =
+              "Microphone access was denied. Please allow microphone access in your browser settings.";
+            break;
+          case "Recording stopped":
+            // Don't show error toast for normal stopping
+            return;
+        }
+      }
+
       toast({
         title: "Recording Error",
-        description: "Could not record your voice. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -638,6 +663,7 @@ const Index = () => {
             onStartRecording={startVoiceRecording}
             onStopRecording={stopVoiceRecording}
             voiceEnabled={isVoiceEnabled}
+            isSpeaking={isSpeaking}
           />
         </Card>
 

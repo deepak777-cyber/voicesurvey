@@ -55,6 +55,7 @@ export class VoiceService {
   private recognition: SpeechRecognition | null = null;
   private synthesis: SpeechSynthesis;
   private isInitialized = false;
+  private isListening = false;
 
   constructor() {
     this.synthesis = window.speechSynthesis;
@@ -73,7 +74,7 @@ export class VoiceService {
     }
 
     this.recognition = new SpeechRecognitionClass();
-    this.recognition.continuous = true; // Changed to true for better capture
+    this.recognition.continuous = false; // Changed to false for better control
     this.recognition.interimResults = true;
     this.recognition.lang = "en-US";
 
@@ -111,73 +112,90 @@ export class VoiceService {
         return;
       }
 
+      if (this.isListening) {
+        reject(new Error("Already listening"));
+        return;
+      }
+
       let finalTranscript = "";
-      let interimTranscript = "";
-      let timeoutId: NodeJS.Timeout;
+      let hasRecognizedSpeech = false;
 
       this.recognition.onresult = (event) => {
-        console.log("Speech recognition result event:", event);
-
-        interimTranscript = "";
+        hasRecognizedSpeech = true;
+        let interimTranscript = "";
 
         for (let i = event.resultIndex; i < event.results.length; i++) {
           const transcript = event.results[i][0].transcript;
-          console.log(
-            "Transcript part:",
-            transcript,
-            "Final:",
-            event.results[i].isFinal
-          );
-
           if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-            // Clear any existing timeout when we get final results
-            if (timeoutId) clearTimeout(timeoutId);
-            // Set a short timeout to end recognition after final result
-            timeoutId = setTimeout(() => {
-              this.recognition?.stop();
-            }, 500);
+            finalTranscript = transcript; // Only keep the last final result
           } else {
             interimTranscript += transcript;
           }
         }
 
-        console.log("Final transcript so far:", finalTranscript);
+        console.log("Final transcript:", finalTranscript);
         console.log("Interim transcript:", interimTranscript);
       };
 
       this.recognition.onend = () => {
-        console.log("Speech recognition ended. Final result:", finalTranscript);
-        if (timeoutId) clearTimeout(timeoutId);
+        this.isListening = false;
+        console.log("Speech recognition ended");
+
+        if (!hasRecognizedSpeech) {
+          reject(new Error("No speech detected"));
+          return;
+        }
+
+        if (!finalTranscript.trim()) {
+          reject(new Error("Could not transcribe audio"));
+          return;
+        }
+
         resolve(finalTranscript.trim());
       };
 
       this.recognition.onerror = (event) => {
         console.error("Speech recognition error:", event.error);
-        if (timeoutId) clearTimeout(timeoutId);
-        reject(new Error(`Recognition error: ${event.error}`));
-      };
+        this.isListening = false;
 
-      // Use addEventListener instead of onstart for better compatibility
-      this.recognition.addEventListener("start", () => {
-        console.log("Speech recognition started");
-        finalTranscript = "";
-        interimTranscript = "";
-      });
+        switch (event.error) {
+          case "no-speech":
+            reject(new Error("No speech detected"));
+            break;
+          case "aborted":
+            reject(new Error("Recording stopped"));
+            break;
+          case "audio-capture":
+            reject(new Error("No microphone detected"));
+            break;
+          case "not-allowed":
+            reject(new Error("Microphone access denied"));
+            break;
+          default:
+            reject(new Error(`Recognition error: ${event.error}`));
+        }
+      };
 
       try {
         console.log("Starting speech recognition...");
         this.recognition.start();
+        this.isListening = true;
       } catch (error) {
         console.error("Error starting recognition:", error);
+        this.isListening = false;
         reject(error);
       }
     });
   }
 
   stopListening(): void {
-    if (this.recognition) {
-      this.recognition.stop();
+    if (this.recognition && this.isListening) {
+      try {
+        this.recognition.stop();
+      } catch (error) {
+        console.error("Error stopping recognition:", error);
+      }
+      this.isListening = false;
     }
   }
 
