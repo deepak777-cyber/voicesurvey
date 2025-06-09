@@ -204,13 +204,21 @@ const Index = () => {
           ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
       }
 
+      // Initialize speech synthesis with user interaction
+      if (!window.speechSynthesis.speaking) {
+        // Create a short utterance to initialize speech synthesis
+        const init = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(init);
+      }
+
       await voiceService.speak(textToRead);
     } catch (error) {
       // Only show error toast for critical speech synthesis errors
       if (
         error instanceof Error &&
         error.message.startsWith("Speech error:") &&
-        !error.message.includes("interrupted")
+        !error.message.includes("interrupted") &&
+        !error.message.includes("not-allowed")
       ) {
         console.error("Critical speech error:", error);
         toast({
@@ -341,7 +349,7 @@ const Index = () => {
       toast({
         title: "Browser Support Issue",
         description:
-          "Please ensure you've granted microphone permissions and are using an up-to-date version of Chrome or Safari.",
+          "Please ensure you've granted microphone permissions and are using a supported browser.",
         variant: "destructive",
       });
       return;
@@ -363,31 +371,44 @@ const Index = () => {
       let errorMessage = "Could not record your voice. Please try again.";
 
       if (error instanceof Error) {
-        switch (error.message) {
-          case "No speech detected":
-            errorMessage =
-              "No speech was detected. Please try speaking again and make sure your microphone is working.";
-            break;
-          case "Could not transcribe audio":
-            errorMessage =
-              "Could not understand the audio. Please try speaking more clearly and check your microphone.";
-            break;
-          case "No microphone detected":
-            errorMessage =
-              "No microphone found. Please check your microphone connection and permissions.";
-            break;
-          case "Microphone access denied":
-            errorMessage =
-              "Microphone access was denied. Please allow microphone access in your browser settings and reload the page.";
-            break;
-          case "Network error occurred":
-            errorMessage =
-              "A network error occurred. Please check your internet connection and try again.";
-            break;
-          case "Recording failed":
-            errorMessage =
-              "Recording failed. Please check your microphone permissions and try again.";
-            break;
+        const errorLower = error.message.toLowerCase();
+
+        if (
+          errorLower.includes("permission") ||
+          errorLower.includes("denied")
+        ) {
+          errorMessage =
+            "Microphone access was denied. Please check your browser settings and make sure microphone permissions are enabled.";
+        } else if (
+          errorLower.includes("not found") ||
+          errorLower.includes("no microphone")
+        ) {
+          errorMessage =
+            "No microphone found. Please check your device settings and ensure a microphone is available.";
+        } else if (
+          errorLower.includes("not supported") ||
+          errorLower.includes("mimetype")
+        ) {
+          errorMessage =
+            "Your browser doesn't support the required audio format. Please try using Chrome or Firefox.";
+        } else if (
+          errorLower.includes("in use") ||
+          errorLower.includes("already")
+        ) {
+          errorMessage =
+            "Microphone is being used by another application. Please close other apps that might be using the microphone.";
+        } else if (
+          errorLower.includes("secure") ||
+          errorLower.includes("ssl")
+        ) {
+          errorMessage =
+            "Voice recording requires a secure connection. Please ensure you're using HTTPS.";
+        } else if (errorLower.includes("timeout")) {
+          errorMessage =
+            "Recording timed out. Please try speaking more quickly after pressing the record button.";
+        } else if (errorLower.includes("network")) {
+          errorMessage =
+            "A network error occurred. Please check your internet connection.";
         }
       }
 
@@ -395,6 +416,7 @@ const Index = () => {
         title: "Recording Error",
         description: errorMessage,
         variant: "destructive",
+        duration: 6000,
       });
     } finally {
       setIsListening(false);

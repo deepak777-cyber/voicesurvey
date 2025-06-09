@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Voice Support Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  </head>
+  <body>
+    <h1>Browser Support Test</h1>
+    <div id="results"></div>
+
+    <script>
+      function log(message, isError = false) {
+        const div = document.createElement("div");
+        div.style.color = isError ? "red" : "green";
+        div.textContent = message;
+        document.getElementById("results").appendChild(div);
+      }
+
+      async function runTests() {
+        // Check HTTPS
+        if (window.location.protocol !== "https:") {
+          log("❌ Not using HTTPS (required for microphone)", true);
+        } else {
+          log("✅ Using HTTPS");
+        }
+
+        // Check Secure Context
+        if (!window.isSecureContext) {
+          log("❌ Not in a secure context", true);
+        } else {
+          log("✅ In a secure context");
+        }
+
+        // Check MediaDevices API
+        if (!navigator.mediaDevices) {
+          log("❌ MediaDevices API not supported", true);
+        } else {
+          log("✅ MediaDevices API supported");
+        }
+
+        // Check getUserMedia
+        if (!navigator.mediaDevices?.getUserMedia) {
+          log("❌ getUserMedia not supported", true);
+        } else {
+          log("✅ getUserMedia supported");
+        }
+
+        // Check RecordRTC
+        if (typeof RecordRTC === "undefined") {
+          log("❌ RecordRTC not loaded", true);
+        } else {
+          log("✅ RecordRTC available");
+        }
+
+        // Test microphone access
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          log("✅ Microphone access granted");
+          stream.getTracks().forEach((track) => track.stop());
+        } catch (error) {
+          log(`❌ Microphone access error: ${error.message}`, true);
+        }
+      }
+
+      runTests().catch((error) => {
+        log(`❌ Test error: ${error.message}`, true);
+      });
+    </script>
+  </body>
+</html>

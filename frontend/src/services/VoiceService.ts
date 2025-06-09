@@ -61,293 +61,286 @@ export class VoiceService {
   private synthesis: SpeechSynthesis;
   private isInitialized = false;
   private isListening = false;
-  private mediaRecorder: MediaRecorder | null = null;
-  private audioChunks: Blob[] = [];
   private stream: MediaStream | null = null;
 
   constructor() {
+    console.log("Initializing VoiceService...");
     this.synthesis = window.speechSynthesis;
   }
 
-  private isMobileBrowser(): boolean {
-    const userAgent = navigator.userAgent.toLowerCase();
-    console.log("User Agent:", userAgent);
-    return /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
-      userAgent
-    );
-  }
-
-  private isChromeBrowser(): boolean {
-    const userAgent = navigator.userAgent.toLowerCase();
-    const vendor = navigator.vendor.toLowerCase();
-    const isChrome = /chrome/.test(userAgent) && /google/.test(vendor);
-    console.log("Is Chrome:", isChrome, "Vendor:", vendor);
-    return isChrome;
-  }
-
-  private logBrowserInfo() {
-    const info = {
-      userAgent: navigator.userAgent,
-      vendor: navigator.vendor,
-      platform: navigator.platform,
-      isMobile: this.isMobileBrowser(),
-      isChrome: this.isChromeBrowser(),
-      hasMediaDevices: !!navigator.mediaDevices,
-      hasGetUserMedia: !!(
-        navigator.mediaDevices && navigator.mediaDevices.getUserMedia
-      ),
-      hasMediaRecorder: typeof MediaRecorder !== "undefined",
-      hasSpeechRecognition: !!(
-        window.SpeechRecognition || (window as any).webkitSpeechRecognition
-      ),
-    };
-    console.log("Browser Information:", info);
-    return info;
-  }
-
-  async initialize(): Promise<boolean> {
-    if (this.isInitialized) return true;
-
-    const browserInfo = this.logBrowserInfo();
-    console.log("Initializing voice service...");
-
+  public async initialize(): Promise<void> {
     try {
-      // First, check if we have the required APIs
-      if (!browserInfo.hasMediaDevices || !browserInfo.hasGetUserMedia) {
-        console.error("Required media APIs not available");
-        return false;
+      console.log("Initializing VoiceService...");
+
+      if (typeof window === "undefined" || !window.navigator) {
+        throw new Error("Browser environment not detected");
       }
 
-      // Request microphone permission
-      console.log("Requesting microphone permission...");
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      // Clean up any existing instances
+      this.stopListening();
+      this.stopSpeaking();
 
-      // Test MediaRecorder
-      console.log("Testing MediaRecorder...");
-      const recorder = new MediaRecorder(stream);
-      recorder.stop();
-      stream.getTracks().forEach((track) => track.stop());
+      // Set up speech recognition if not already initialized
+      if (!this.isInitialized) {
+        const SpeechRecognition =
+          window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          this.recognition = new SpeechRecognition();
+          this.setupRecognitionConfig();
+          console.log("Speech recognition configured");
+        } else {
+          console.warn("Speech recognition not supported in this browser");
+        }
 
-      // For mobile browsers, we're done here
-      if (this.isMobileBrowser()) {
-        console.log("Mobile browser detected, initialization complete");
+        if (window.speechSynthesis) {
+          this.synthesis = window.speechSynthesis;
+        } else {
+          console.warn("Speech synthesis not supported in this browser");
+        }
+
         this.isInitialized = true;
-        return true;
+        console.log("VoiceService initialization complete");
       }
-
-      // For desktop browsers, also initialize SpeechRecognition
-      console.log("Initializing SpeechRecognition...");
-      const SpeechRecognitionClass =
-        window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-      if (!SpeechRecognitionClass) {
-        console.error("SpeechRecognition not available");
-        // Still return true if we're on mobile since we'll use MediaRecorder
-        return this.isMobileBrowser();
-      }
-
-      this.recognition = new SpeechRecognitionClass();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = false;
-      this.recognition.maxAlternatives = 1;
-      this.recognition.lang = "en-US";
-
-      this.isInitialized = true;
-      console.log("Voice service initialization complete");
-      return true;
     } catch (error) {
       console.error("Error during initialization:", error);
-      return false;
+      throw error;
     }
   }
 
-  private async setupRecording(): Promise<void> {
-    try {
-      this.stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+  private setupRecognitionConfig(): void {
+    if (!this.recognition) return;
 
-      this.mediaRecorder = new MediaRecorder(this.stream);
-      this.audioChunks = [];
-
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data);
-        }
-      };
-    } catch (error) {
-      console.error("Error setting up recording:", error);
-      throw new Error("Could not setup recording");
-    }
+    this.recognition.continuous = false;
+    this.recognition.interimResults = true;
+    this.recognition.maxAlternatives = 1;
+    this.recognition.lang = "en-US";
+    console.log("Speech recognition configured");
   }
 
-  private cleanup(): void {
-    if (this.stream) {
-      this.stream.getTracks().forEach((track) => track.stop());
-      this.stream = null;
-    }
-    this.mediaRecorder = null;
-    this.audioChunks = [];
-    this.isListening = false;
-  }
-
-  async startListening(): Promise<string> {
-    if (this.isMobileBrowser()) {
-      return this.startMobileRecording();
-    }
-    return this.startDesktopRecording();
-  }
-
-  private async startMobileRecording(): Promise<string> {
+  public async startListening(): Promise<string> {
     return new Promise(async (resolve, reject) => {
       try {
-        await this.setupRecording();
-        this.isListening = true;
+        // Stop any ongoing recording/recognition
+        this.stopListening();
+        this.stopSpeaking();
 
-        this.mediaRecorder!.onstop = async () => {
-          const audioBlob = new Blob(this.audioChunks, { type: "audio/webm" });
-          this.cleanup();
+        // Initialize if needed
+        if (!this.isInitialized) {
+          await this.initialize();
+        }
 
-          // Here you would typically send the audioBlob to your server
-          // For now, we'll just log it
-          console.log("Recording complete, blob size:", audioBlob.size);
-          resolve("Recording captured successfully");
+        if (!this.recognition) {
+          throw new Error("Speech recognition not available");
+        }
+
+        let finalTranscript = "";
+        let timeoutId: NodeJS.Timeout | null = null;
+
+        this.recognition.onresult = (event) => {
+          let interimTranscript = "";
+
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            const confidence = event.results[i][0].confidence;
+
+            if (event.results[i].isFinal) {
+              finalTranscript = transcript;
+              console.log(
+                "Final transcript:",
+                finalTranscript,
+                "Confidence:",
+                confidence
+              );
+
+              // Clear any existing timeout when we get final results
+              if (timeoutId) clearTimeout(timeoutId);
+
+              // Stop recognition after getting final result
+              this.recognition?.stop();
+            } else {
+              interimTranscript = transcript;
+              console.log(
+                "Interim transcript:",
+                interimTranscript,
+                "Confidence:",
+                confidence
+              );
+            }
+          }
         };
 
-        this.mediaRecorder!.start();
+        this.recognition.onend = () => {
+          console.log("Speech recognition ended");
+          if (timeoutId) clearTimeout(timeoutId);
 
-        // Record for 5 seconds
-        setTimeout(() => {
-          if (this.mediaRecorder?.state === "recording") {
-            this.mediaRecorder.stop();
+          if (finalTranscript) {
+            resolve(finalTranscript.trim());
+          } else {
+            reject(new Error("No speech detected. Please try speaking again."));
           }
-        }, 5000);
-      } catch (error) {
-        this.cleanup();
-        reject(new Error("Recording failed: " + error.message));
-      }
-    });
-  }
+        };
 
-  private async startDesktopRecording(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (!this.recognition) {
-        reject(new Error("Speech recognition not initialized"));
-        return;
-      }
+        this.recognition.onerror = (event) => {
+          console.error("Speech recognition error:", event.error);
+          if (timeoutId) clearTimeout(timeoutId);
 
-      if (this.isListening) {
-        this.stopListening();
-      }
+          switch (event.error) {
+            case "not-allowed":
+              reject(
+                new Error("Please allow microphone access to use voice input.")
+              );
+              break;
+            case "no-speech":
+              reject(
+                new Error("No speech was detected. Please try speaking again.")
+              );
+              break;
+            case "network":
+              reject(
+                new Error(
+                  "Network error. Please check your internet connection."
+                )
+              );
+              break;
+            case "aborted":
+              reject(new Error("Voice recording was cancelled."));
+              break;
+            default:
+              reject(new Error(`Voice recording error: ${event.error}`));
+          }
+        };
 
-      this.recognition.onresult = (event) => {
-        if (event.results.length > 0) {
-          const result = event.results[event.results.length - 1];
-          if (result.isFinal) {
-            const transcript = result[0].transcript;
-            this.stopListening();
-            resolve(transcript.trim());
+        // Set a timeout to stop recognition if no speech is detected
+        timeoutId = setTimeout(() => {
+          if (this.recognition && !finalTranscript) {
+            this.recognition.stop();
+          }
+        }, 7000); // 7 seconds timeout
+
+        try {
+          await this.recognition.start();
+          console.log("Speech recognition started");
+        } catch (error) {
+          if (error instanceof Error) {
+            if (error.message.includes("already started")) {
+              // If recognition is already started, stop it and try again
+              this.stopListening();
+              setTimeout(() => this.startListening(), 100);
+            } else {
+              reject(error);
+            }
+          } else {
+            reject(new Error("Failed to start voice recording"));
           }
         }
-      };
-
-      this.recognition.onerror = (event) => {
-        this.isListening = false;
-        reject(new Error(event.error));
-      };
-
-      try {
-        this.recognition.start();
-        this.isListening = true;
       } catch (error) {
-        this.isListening = false;
+        console.error("Error in startListening:", error);
         reject(error);
       }
     });
   }
 
-  stopListening(): void {
-    if (this.isMobileBrowser()) {
-      if (this.mediaRecorder?.state === "recording") {
-        this.mediaRecorder.stop();
+  public stopListening(): void {
+    try {
+      if (this.recognition) {
+        this.recognition.stop();
       }
-      this.cleanup();
-    } else if (this.recognition && this.isListening) {
-      this.recognition.stop();
-      this.isListening = false;
+    } catch (error) {
+      console.warn("Error stopping recognition:", error);
     }
   }
 
-  async speak(text: string): Promise<void> {
+  public async speak(text: string): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (!this.synthesis) {
-        reject(new Error("Speech synthesis not supported"));
-        return;
+      try {
+        // Check if speech synthesis is available
+        if (!this.synthesis) {
+          console.log(
+            "Speech synthesis not available - continuing without audio"
+          );
+          return resolve();
+        }
+
+        // Cancel any ongoing speech
+        this.stopSpeaking();
+
+        // Create and configure utterance
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+
+        // Handle completion
+        utterance.onend = () => {
+          console.log("Speech completed");
+          resolve();
+        };
+
+        // Handle errors
+        utterance.onerror = (event) => {
+          // Don't treat not-allowed as an error, just continue silently
+          if (event.error === "not-allowed") {
+            console.log("Speech synthesis blocked - continuing without audio");
+            resolve();
+            return;
+          }
+
+          console.error("Speech error:", event.error);
+          // For other errors, still resolve but log them
+          resolve();
+        };
+
+        // Attempt to speak
+        this.synthesis.speak(utterance);
+      } catch (error) {
+        console.log("Speech did not start - continuing without audio");
+        resolve(); // Always resolve, don't reject
       }
-
-      this.synthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.8;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-
-      utterance.onend = () => resolve();
-      utterance.onerror = (event) =>
-        reject(new Error(`Speech error: ${event.error}`));
-
-      this.synthesis.speak(utterance);
     });
   }
 
   stopSpeaking(): void {
+    console.log("Stopping speech");
     if (this.synthesis) {
       this.synthesis.cancel();
     }
   }
 
-  isSupported(): boolean {
-    const browserInfo = this.logBrowserInfo();
+  cleanup(): void {
+    console.log("Cleaning up resources...");
+    this.stopListening();
+    this.stopSpeaking();
 
-    // Basic requirements for all browsers
-    const hasBasicSupport =
-      browserInfo.hasMediaDevices &&
-      browserInfo.hasGetUserMedia &&
-      browserInfo.hasMediaRecorder;
+    if (this.stream) {
+      this.stream.getTracks().forEach((track) => track.stop());
+      this.stream = null;
+    }
 
-    if (!hasBasicSupport) {
-      console.log("Basic media support missing");
+    this.isListening = false;
+    console.log("Cleanup complete");
+  }
+
+  public isSupported(): boolean {
+    try {
+      // Check for required APIs
+      const hasMediaDevices = !!(
+        navigator.mediaDevices && navigator.mediaDevices.getUserMedia
+      );
+      const hasSpeechRecognition = !!(
+        window.SpeechRecognition || window.webkitSpeechRecognition
+      );
+      const hasSpeechSynthesis = !!window.speechSynthesis;
+
+      console.log("Browser support check:");
+      console.log("- MediaDevices API:", hasMediaDevices);
+      console.log("- Speech Recognition:", hasSpeechRecognition);
+      console.log("- Speech Synthesis:", hasSpeechSynthesis);
+
+      // We only need SpeechRecognition and MediaDevices for basic functionality
+      return hasMediaDevices && hasSpeechRecognition;
+    } catch (error) {
+      console.error("Error checking browser support:", error);
       return false;
     }
-
-    // For mobile Chrome, we only need MediaRecorder
-    if (browserInfo.isMobile && browserInfo.isChrome) {
-      console.log("Mobile Chrome detected, supported");
-      return true;
-    }
-
-    // For desktop browsers, we need SpeechRecognition
-    if (!browserInfo.isMobile) {
-      const hasSpeechRecognition = browserInfo.hasSpeechRecognition;
-      console.log(
-        "Desktop browser detected, SpeechRecognition support:",
-        hasSpeechRecognition
-      );
-      return hasSpeechRecognition;
-    }
-
-    // For other mobile browsers, we'll use MediaRecorder
-    console.log("Other mobile browser detected, using MediaRecorder");
-    return true;
   }
 }
