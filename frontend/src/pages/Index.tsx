@@ -23,7 +23,7 @@ interface Option {
 
 interface Question {
   id: string;
-  type: "text" | "multiple-choice" | "multi-select" | "rating";
+  type: "text" | "single-select" | "multi-select" | "rating";
   question: string;
   options?: Option[];
   required: boolean;
@@ -43,7 +43,7 @@ const surveyQuestions: Question[] = [
   },
   {
     id: "2",
-    type: "multiple-choice",
+    type: "single-select",
     question: "How would you rate your overall experience with our service?",
     options: [
       { value: 1, name: "Excellent" },
@@ -56,9 +56,15 @@ const surveyQuestions: Question[] = [
   },
   {
     id: "3",
-    type: "rating",
-    question:
-      "On a scale of 1 to 10, how likely are you to recommend us to a friend?",
+    type: "single-select",
+    question: "How satisfied are you with our customer service?",
+    options: [
+      { value: 1, name: "Very Dissatisfied" },
+      { value: 2, name: "Dissatisfied" },
+      { value: 3, name: "Neutral" },
+      { value: 4, name: "Satisfied" },
+      { value: 5, name: "Very Satisfied" },
+    ],
     required: true,
   },
   {
@@ -83,7 +89,7 @@ const surveyQuestions: Question[] = [
   },
   {
     id: "6",
-    type: "multiple-choice",
+    type: "single-select",
     question: "How did you hear about us?",
     options: [
       { value: 1, name: "Social Media" },
@@ -135,7 +141,7 @@ const Index = () => {
         title: "Voice Features Not Available",
         description:
           "Please ensure you've granted microphone permissions and are using a supported browser (Chrome or Safari).",
-        variant: "warning",
+        variant: "default",
         duration: 6000,
       });
     }
@@ -185,7 +191,7 @@ const Index = () => {
 
       // Add options for multiple choice and multi-select questions
       if (
-        (currentQuestion.type === "multiple-choice" ||
+        (currentQuestion.type === "single-select" ||
           currentQuestion.type === "multi-select") &&
         currentQuestion.options
       ) {
@@ -312,7 +318,7 @@ const Index = () => {
     }
 
     // For single select questions
-    if (currentQuestion.type === "multiple-choice" && currentQuestion.options) {
+    if (currentQuestion.type === "single-select" && currentQuestion.options) {
       // Try exact match first
       const exactMatch = currentQuestion.options.find(
         (option) => option.name.toLowerCase() === normalizedInput
@@ -360,11 +366,44 @@ const Index = () => {
       const result = await voiceService.startListening();
       if (result) {
         const matchedAnswer = matchVoiceToOption(result);
+
+        // Check if a valid option was selected
+        let isValidAnswer = false;
+        if (
+          currentQuestion.type === "single-select" &&
+          currentQuestion.options
+        ) {
+          isValidAnswer = currentQuestion.options.some(
+            (opt) => opt.name === matchedAnswer
+          );
+        } else if (
+          currentQuestion.type === "multi-select" &&
+          currentQuestion.options
+        ) {
+          const selectedOptions = matchedAnswer
+            .split(",")
+            .map((opt) => opt.trim());
+          isValidAnswer = selectedOptions.some((selected) =>
+            currentQuestion.options?.some((opt) => opt.name === selected)
+          );
+        } else if (currentQuestion.type === "text") {
+          isValidAnswer = matchedAnswer.trim() !== "";
+        }
+
         handleAnswerChange(matchedAnswer);
-        toast({
-          title: "Voice Recorded",
-          description: "Your response has been captured successfully.",
-        });
+
+        if (isValidAnswer) {
+          toast({
+            title: "Voice Recorded",
+            description: "Your response has been captured successfully.",
+          });
+        } else if (currentQuestion.type !== "text") {
+          toast({
+            title: "No Valid Option Selected",
+            description: "Please try again with one of the available options.",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       console.error("Error recording voice:", error);
@@ -466,9 +505,21 @@ const Index = () => {
 
     // For multi-select questions, check if at least one option is selected
     if (currentQuestion.type === "multi-select") {
-      return currentAnswer.trim() !== "";
+      return (
+        currentAnswer.trim() !== "" &&
+        currentAnswer.split(",").some((opt) => opt.trim() !== "")
+      );
     }
 
+    // For single-select questions, ensure a valid option is selected
+    if (currentQuestion.type === "single-select") {
+      const selectedOption = currentQuestion.options?.find(
+        (opt) => opt.name === currentAnswer.trim()
+      );
+      return !!selectedOption;
+    }
+
+    // For text and rating questions, ensure non-empty answer
     return currentAnswer.trim() !== "";
   };
 

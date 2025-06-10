@@ -15,7 +15,7 @@ interface Option {
 
 interface Question {
   id: string;
-  type: "text" | "multiple-choice" | "multi-select" | "rating";
+  type: "text" | "single-select" | "multi-select" | "rating";
   question: string;
   options?: Option[];
   required: boolean;
@@ -344,7 +344,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           </div>
         );
 
-      case "multiple-choice":
+      case "single-select":
         return (
           <div className="space-y-4">
             <RadioGroup
