@@ -112,7 +112,7 @@ export class VoiceService {
 
     this.recognition.continuous = false;
     this.recognition.interimResults = true;
-    this.recognition.maxAlternatives = 1;
+    this.recognition.maxAlternatives = 3;
     this.recognition.lang = "en-US";
     console.log("Speech recognition configured");
   }
@@ -138,18 +138,35 @@ export class VoiceService {
 
         this.recognition.onresult = (event) => {
           let interimTranscript = "";
+          let bestConfidence = 0;
+          let bestTranscript = "";
 
           for (let i = event.resultIndex; i < event.results.length; i++) {
-            const transcript = event.results[i][0].transcript;
-            const confidence = event.results[i][0].confidence;
+            // Check all alternatives for the best confidence
+            for (let j = 0; j < event.results[i].length; j++) {
+              const transcript = event.results[i][j].transcript;
+              const confidence = event.results[i][j].confidence;
+
+              // For short words, we prioritize exact matches
+              if (transcript.trim().length <= 4 && confidence > 0.7) {
+                bestTranscript = transcript;
+                break;
+              }
+
+              // For longer phrases, use the highest confidence
+              if (confidence > bestConfidence) {
+                bestConfidence = confidence;
+                bestTranscript = transcript;
+              }
+            }
 
             if (event.results[i].isFinal) {
-              finalTranscript = transcript;
+              finalTranscript = bestTranscript;
               console.log(
                 "Final transcript:",
                 finalTranscript,
                 "Confidence:",
-                confidence
+                bestConfidence
               );
 
               // Clear any existing timeout when we get final results
@@ -158,12 +175,12 @@ export class VoiceService {
               // Stop recognition after getting final result
               this.recognition?.stop();
             } else {
-              interimTranscript = transcript;
+              interimTranscript = bestTranscript;
               console.log(
                 "Interim transcript:",
                 interimTranscript,
                 "Confidence:",
-                confidence
+                bestConfidence
               );
             }
           }

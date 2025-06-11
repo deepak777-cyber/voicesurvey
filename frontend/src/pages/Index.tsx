@@ -68,16 +68,52 @@ const surveyQuestions: Question[] = [
     required: true,
   },
   {
-    id: "4",
-    type: "multi-select",
-    question:
-      "Which of the following features do you find most valuable? (Select all that apply)",
+    id: "4_1",
+    type: "single-select",
+    question: "Do you find Customer Support valuable?",
     options: [
-      { value: 1, name: "Customer Support" },
-      { value: 2, name: "Easy to Use" },
-      { value: 3, name: "Good Value" },
-      { value: 4, name: "Fast Delivery" },
-      { value: 5, name: "Quality Products" },
+      { value: 1, name: "Yes" },
+      { value: 0, name: "No" },
+    ],
+    required: true,
+  },
+  {
+    id: "4_2",
+    type: "single-select",
+    question: "Do you find Easy to Use valuable?",
+    options: [
+      { value: 1, name: "Yes" },
+      { value: 0, name: "No" },
+    ],
+    required: true,
+  },
+  {
+    id: "4_3",
+    type: "single-select",
+    question: "Do you find Good Value valuable?",
+    options: [
+      { value: 1, name: "Yes" },
+      { value: 0, name: "No" },
+    ],
+    required: true,
+  },
+  {
+    id: "4_4",
+    type: "single-select",
+    question: "Do you find Fast Delivery valuable?",
+    options: [
+      { value: 1, name: "Yes" },
+      { value: 0, name: "No" },
+    ],
+    required: true,
+  },
+  {
+    id: "4_5",
+    type: "single-select",
+    question: "Do you find Quality Products valuable?",
+    options: [
+      { value: 1, name: "Yes" },
+      { value: 0, name: "No" },
     ],
     required: true,
   },
@@ -210,32 +246,16 @@ const Index = () => {
           ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
       }
 
-      // Initialize speech synthesis with user interaction
-      if (!window.speechSynthesis.speaking) {
-        // Create a short utterance to initialize speech synthesis
-        const init = new SpeechSynthesisUtterance("");
-        window.speechSynthesis.speak(init);
-      }
-
       await voiceService.speak(textToRead);
+
+      // Wait a short moment after speaking finishes before starting recording
+      setTimeout(() => {
+        if (!isListening) {
+          startVoiceRecording();
+        }
+      }, 100);
     } catch (error) {
-      // Only show error toast for critical speech synthesis errors
-      if (
-        error instanceof Error &&
-        error.message.startsWith("Speech error:") &&
-        !error.message.includes("interrupted") &&
-        !error.message.includes("not-allowed")
-      ) {
-        console.error("Critical speech error:", error);
-        toast({
-          title: "Voice Error",
-          description: "Could not read the question aloud.",
-          variant: "destructive",
-        });
-      } else {
-        // Log non-critical errors for debugging but don't show toast
-        console.log("Non-critical speech event:", error);
-      }
+      console.error("Speech error:", error);
     } finally {
       setIsSpeaking(false);
     }
@@ -358,6 +378,11 @@ const Index = () => {
           "Please ensure you've granted microphone permissions and are using a supported browser.",
         variant: "destructive",
       });
+      return;
+    }
+
+    // Don't start recording if already listening or still speaking
+    if (isListening || isSpeaking) {
       return;
     }
 
