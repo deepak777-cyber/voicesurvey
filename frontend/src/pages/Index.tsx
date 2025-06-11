@@ -717,8 +717,11 @@ const Index = () => {
   };
 
   const handleStopSpeaking = () => {
-    voiceService.stopSpeaking();
-    setIsSpeaking(false);
+    // Only allow stopping if an answer is being selected
+    if (getCurrentAnswer()) {
+      voiceService.stopSpeaking();
+      setIsSpeaking(false);
+    }
   };
 
   if (showThankYou) {
@@ -727,7 +730,12 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-2xl mx-auto">
+      {/* Logo */}
+      <div className="fixed left-4 top-4">
+        <img src="/logo.png" alt="Logo" className="h-12 w-auto" />
+      </div>
+
+      <div className="max-w-2xl mx-auto relative">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">

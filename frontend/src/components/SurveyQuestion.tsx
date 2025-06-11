@@ -50,8 +50,9 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = async () => {
+    // Don't allow recording while speaking
     if (isSpeaking) {
-      onStopSpeaking();
+      return;
     }
     setError(null);
     setIsProcessing(false);
@@ -297,7 +298,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           variant={isListening ? "destructive" : "outline"}
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
-          disabled={isProcessing}
+          disabled={isProcessing || isSpeaking}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
             isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
           }`}
@@ -306,7 +307,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           {isProcessing
             ? "Processing..."
             : isSpeaking
-            ? "Tap to Record"
+            ? "Please wait..."
             : isListening
             ? "Tap to Stop"
             : "Tap to Record"}
