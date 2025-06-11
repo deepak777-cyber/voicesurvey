@@ -731,14 +731,15 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       {/* Logo */}
-      <div className="fixed left-4 top-4">
-        <img src="/logo.png" alt="Logo" className="h-12 w-auto" />
+      <div className="fixed left-4 top-4 z-10">
+        <img src="/logo.png" alt="Logo" className="h-8 md:h-12 w-auto" />
       </div>
 
-      <div className="max-w-2xl mx-auto relative">
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          <div className="h-12 md:h-16"></div> {/* Spacer for logo */}
+          <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
             Voice Survey
           </h1>
           <p className="text-gray-600">
