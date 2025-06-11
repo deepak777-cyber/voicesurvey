@@ -1,11 +1,4 @@
 import { Handler } from "@netlify/functions";
-import { Buffer } from "buffer";
-
-declare const process: {
-  env: {
-    DEEPGRAM_API_KEY: string;
-  };
-};
 
 const DEEPGRAM_API_KEY = process.env.DEEPGRAM_API_KEY;
 
@@ -31,7 +24,7 @@ export const handler: Handler = async (event) => {
 
     // Call Deepgram API
     const response = await fetch(
-      "https://api.deepgram.com/v1/listen?language=en&model=nova-3&smart_format=true&punctuate=true&diarize=false&utterances=false&numerals=true&profanity_filter=true&detect_topics=true&filler_words=false&multichannel=false",
+      "https://api.deepgram.com/v1/listen?language=en&model=nova-3",
       {
         method: "POST",
         headers: {

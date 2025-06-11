@@ -13,14 +13,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { SurveyQuestion } from "@/components/SurveyQuestion";
 import { VoiceService } from "@/services/VoiceService";
-// import { useLocationLanguage } from "@/hooks/useLocationLanguage";
-// import LanguageSelector from "@/components/LanguageSelector";
 import config from "@/config";
 import { ThankYou } from "@/components/ThankYou";
-import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 
 interface Option {
   value: number;
@@ -109,8 +103,9 @@ const surveyQuestions: Question[] = [
 ];
 
 const Index = () => {
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(-1);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>(() => {
+    // Load answers from localStorage on component mount
     const savedAnswers = localStorage.getItem("surveyAnswers");
     return savedAnswers ? JSON.parse(savedAnswers) : [];
   });
@@ -119,12 +114,8 @@ const Index = () => {
   const [voiceService] = useState(() => new VoiceService());
   const [isVoiceEnabled, setIsVoiceEnabled] = useState(true);
   const [isVoiceSupported, setIsVoiceSupported] = useState(true);
-  const [isProcessingMultiSelect, setIsProcessingMultiSelect] = useState(false);
-  const [questionProcessed, setQuestionProcessed] = useState(false);
   const { toast } = useToast();
   const [showThankYou, setShowThankYou] = useState(false);
-  // const { language, setLanguage, isDetecting, detectLocationAndLanguage } =
-  //   useLocationLanguage();
 
   const currentQuestion = surveyQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
@@ -164,18 +155,7 @@ const Index = () => {
   useEffect(() => {
     // Read the current question when it changes
     if (isVoiceEnabled && currentQuestion) {
-      // Reset states and stop any ongoing voice activities
-      setIsListening(false);
-      setIsSpeaking(false);
-      voiceService.stopSpeaking();
-      voiceService.stopListening();
-
-      // Add a small delay before reading the new question
-      const readTimeout = setTimeout(() => {
-        readQuestion();
-      }, 300);
-
-      return () => clearTimeout(readTimeout);
+      readQuestion();
     }
   }, [currentQuestionIndex, isVoiceEnabled]);
 
@@ -195,11 +175,6 @@ const Index = () => {
     setCurrentQuestionIndex(0);
   }, []); // Empty dependency array means this runs once when component mounts
 
-  // useEffect(() => {
-  //   // Detect language on component mount
-  //   detectLocationAndLanguage();
-  // }, []);
-
   const calculateElapsedTime = () => {
     const startTime = new Date(
       localStorage.getItem("startTime") || new Date().toISOString()
@@ -208,49 +183,43 @@ const Index = () => {
   };
 
   const readQuestion = async () => {
-    if (!isVoiceEnabled || isSpeaking || isListening) return;
+    if (!isVoiceEnabled) return;
 
-    // Reset the processed flag when manually reading question
-    setQuestionProcessed(false);
-
-    // Stop any ongoing voice activities
-    voiceService.stopSpeaking();
-    voiceService.stopListening();
-    setIsListening(false);
     setIsSpeaking(true);
-
     try {
-      // Read the question text first
-      await voiceService.speak(currentQuestion.question);
+      let textToRead = currentQuestion.question;
 
-      // Brief pause after question
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      // Add options for multiple choice and multi-select questions
+      if (
+        (currentQuestion.type === "single-select" ||
+          currentQuestion.type === "multi-select") &&
+        currentQuestion.options
+      ) {
+        textToRead += ". Your options are: ";
+        textToRead += currentQuestion.options.map((opt) => opt.name).join(", ");
 
-      // For single-select, read the options
-      if (currentQuestion.type === "single-select" && currentQuestion.options) {
-        const optionsText =
-          ". Your options are: " +
-          currentQuestion.options.map((opt) => opt.name).join(", ");
-        await voiceService.speak(optionsText);
+        if (currentQuestion.type === "multi-select") {
+          textToRead +=
+            '. You can select multiple options by saying them separated by "and".';
+        }
       }
 
       // Add instruction for rating questions
       if (currentQuestion.type === "rating") {
-        await voiceService.speak(
-          ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely."
-        );
+        textToRead +=
+          ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
       }
 
-      // Add instruction for text questions
-      if (currentQuestion.type === "text") {
-        await voiceService.speak(". Please provide your answer when ready.");
+      // Initialize speech synthesis with user interaction
+      if (!window.speechSynthesis.speaking) {
+        // Create a short utterance to initialize speech synthesis
+        const init = new SpeechSynthesisUtterance("");
+        window.speechSynthesis.speak(init);
       }
 
-      // Add instruction for multi-select
-      if (currentQuestion.type === "multi-select") {
-        await voiceService.speak("I will read each option for you to select.");
-      }
+      await voiceService.speak(textToRead);
     } catch (error) {
+      // Only show error toast for critical speech synthesis errors
       if (
         error instanceof Error &&
         error.message.startsWith("Speech error:") &&
@@ -264,6 +233,7 @@ const Index = () => {
           variant: "destructive",
         });
       } else {
+        // Log non-critical errors for debugging but don't show toast
         console.log("Non-critical speech event:", error);
       }
     } finally {
@@ -393,40 +363,46 @@ const Index = () => {
 
     setIsListening(true);
     try {
-      // Only handle non-multi-select cases here
-      if (currentQuestion.type !== "multi-select") {
-        const result = await voiceService.startListening();
-        if (result) {
-          const matchedAnswer = matchVoiceToOption(result);
+      const result = await voiceService.startListening();
+      if (result) {
+        const matchedAnswer = matchVoiceToOption(result);
 
-          // Check if a valid option was selected
-          let isValidAnswer = false;
-          if (
-            currentQuestion.type === "single-select" &&
-            currentQuestion.options
-          ) {
-            isValidAnswer = currentQuestion.options.some(
-              (opt) => opt.name === matchedAnswer
-            );
-          } else if (currentQuestion.type === "text") {
-            isValidAnswer = matchedAnswer.trim() !== "";
-          }
+        // Check if a valid option was selected
+        let isValidAnswer = false;
+        if (
+          currentQuestion.type === "single-select" &&
+          currentQuestion.options
+        ) {
+          isValidAnswer = currentQuestion.options.some(
+            (opt) => opt.name === matchedAnswer
+          );
+        } else if (
+          currentQuestion.type === "multi-select" &&
+          currentQuestion.options
+        ) {
+          const selectedOptions = matchedAnswer
+            .split(",")
+            .map((opt) => opt.trim());
+          isValidAnswer = selectedOptions.some((selected) =>
+            currentQuestion.options?.some((opt) => opt.name === selected)
+          );
+        } else if (currentQuestion.type === "text") {
+          isValidAnswer = matchedAnswer.trim() !== "";
+        }
 
-          handleAnswerChange(matchedAnswer);
+        handleAnswerChange(matchedAnswer);
 
-          if (isValidAnswer) {
-            toast({
-              title: "Voice Recorded",
-              description: "Your response has been captured successfully.",
-            });
-          } else if (currentQuestion.type !== "text") {
-            toast({
-              title: "No Valid Option Selected",
-              description:
-                "Please try again with one of the available options.",
-              variant: "destructive",
-            });
-          }
+        if (isValidAnswer) {
+          toast({
+            title: "Voice Recorded",
+            description: "Your response has been captured successfully.",
+          });
+        } else if (currentQuestion.type !== "text") {
+          toast({
+            title: "No Valid Option Selected",
+            description: "Please try again with one of the available options.",
+            variant: "destructive",
+          });
         }
       }
     } catch (error) {
@@ -503,14 +479,6 @@ const Index = () => {
   };
 
   const handleAnswerChange = (answer: string) => {
-    // Stop any ongoing voice activities when user manually interacts
-    setIsListening(false);
-    setIsSpeaking(false);
-    setIsProcessingMultiSelect(false);
-    setQuestionProcessed(true);
-    voiceService.stopSpeaking();
-    voiceService.stopListening();
-
     const existingAnswerIndex = answers.findIndex(
       (a) => a.questionId === currentQuestion.id
     );
@@ -537,12 +505,9 @@ const Index = () => {
 
     // For multi-select questions, check if at least one option is selected
     if (currentQuestion.type === "multi-select") {
-      if (!currentAnswer.trim()) return false;
-
-      const selectedOptions = currentAnswer.split(",").map((opt) => opt.trim());
-      // Check if at least one valid option from the available options is selected
-      return selectedOptions.some((selected) =>
-        currentQuestion.options?.some((opt) => opt.name === selected)
+      return (
+        currentAnswer.trim() !== "" &&
+        currentAnswer.split(",").some((opt) => opt.trim() !== "")
       );
     }
 
@@ -726,7 +691,7 @@ const Index = () => {
     }
   };
 
-  const handleNext = async () => {
+  const handleNext = () => {
     if (!canProceed()) {
       toast({
         title: "Required Field",
@@ -736,32 +701,17 @@ const Index = () => {
       return;
     }
 
-    // Reset all voice states and stop any ongoing processes
-    setIsListening(false);
-    setIsSpeaking(false);
-    setIsProcessingMultiSelect(false);
-    setQuestionProcessed(true);
-    await voiceService.stopSpeaking();
-    await voiceService.stopListening();
-
-    await saveIncompleteResponse();
+    saveIncompleteResponse();
 
     if (isLastQuestion) {
       handleSubmit();
     } else {
-      // Move to next question
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     }
   };
 
   const handlePrevious = () => {
     if (!isFirstQuestion) {
-      // Reset voice states
-      setIsListening(false);
-      setIsSpeaking(false);
-      voiceService.stopSpeaking();
-      voiceService.stopListening();
-
       setCurrentQuestionIndex(currentQuestionIndex - 1);
     }
   };
@@ -771,524 +721,95 @@ const Index = () => {
     setIsSpeaking(false);
   };
 
-  const handleQuestionAutomation = async () => {
-    if (
-      !isVoiceEnabled ||
-      !isVoiceSupported ||
-      !currentQuestion ||
-      isSpeaking ||
-      isProcessingMultiSelect ||
-      questionProcessed
-    )
-      return;
-
-    try {
-      // Handle different question types
-      if (currentQuestion.type === "multi-select" && currentQuestion.options) {
-        setIsProcessingMultiSelect(true);
-
-        try {
-          // First announce the process
-          setIsSpeaking(true);
-          await voiceService.speak(
-            "I will now read each option one by one. After each option, you have 5 seconds to say yes. No response or any other response will be considered as no."
-          );
-          await new Promise((resolve) => setTimeout(resolve, 1000));
-          setIsSpeaking(false);
-
-          const selectedOptions: string[] = [];
-
-          // Go through each option
-          for (const option of currentQuestion.options) {
-            try {
-              // Reset states before processing each option
-              setIsListening(false);
-              setIsSpeaking(false);
-              await voiceService.stopListening();
-              await voiceService.stopSpeaking();
-              await new Promise((resolve) => setTimeout(resolve, 500));
-
-              // Read the option
-              setIsSpeaking(true);
-              toast({
-                title: "Option",
-                description: option.name,
-                duration: 2000,
-              });
-              await voiceService.speak(option.name + "?");
-              setIsSpeaking(false);
-
-              // Wait before listening
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-
-              // Start listening with timeout
-              setIsListening(true);
-              toast({
-                title: "Listening",
-                description: "Say yes within 5 seconds to select this option",
-                duration: 2000,
-              });
-
-              let isSelected = false;
-              try {
-                const timeoutPromise = new Promise<boolean>((resolve) => {
-                  setTimeout(() => resolve(false), 5000);
-                });
-
-                isSelected = await Promise.race([
-                  voiceService.listenForYesNo(),
-                  timeoutPromise,
-                ]);
-
-                // Ensure states are reset
-                setIsListening(false);
-                await voiceService.stopListening();
-                await new Promise((resolve) => setTimeout(resolve, 500));
-              } catch (error) {
-                console.error("Error during listening:", error);
-                isSelected = false;
-              }
-
-              // Provide feedback
-              setIsSpeaking(true);
-              if (isSelected) {
-                selectedOptions.push(option.name);
-                await voiceService.speak("Selected");
-              } else {
-                await voiceService.speak("Not selected");
-              }
-              setIsSpeaking(false);
-
-              // Wait before next option
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-            } catch (error) {
-              console.error(`Error processing option ${option.name}:`, error);
-              setIsListening(false);
-              setIsSpeaking(false);
-              await voiceService.stopListening();
-              await voiceService.stopSpeaking();
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-            }
-          }
-
-          // Final feedback
-          try {
-            setIsSpeaking(true);
-            if (selectedOptions.length > 0) {
-              handleAnswerChange(selectedOptions.join(","));
-              await voiceService.speak(
-                `You selected: ${selectedOptions.join(", ")}`
-              );
-            } else {
-              await voiceService.speak(
-                "No options were selected. You can try again by clicking Read Question Again."
-              );
-            }
-          } catch (error) {
-            console.error("Error in final feedback:", error);
-          } finally {
-            setIsSpeaking(false);
-            setIsListening(false);
-            await voiceService.stopListening();
-            await voiceService.stopSpeaking();
-            setQuestionProcessed(true);
-          }
-        } finally {
-          setIsProcessingMultiSelect(false);
-        }
-      } else if (
-        currentQuestion.type === "single-select" &&
-        currentQuestion.options
-      ) {
-        setIsListening(true);
-        toast({
-          title: "Listening",
-          description: "Please say your choice",
-          duration: 3000,
-        });
-
-        const result = await voiceService.startListening();
-        if (result) {
-          const matchedAnswer = matchVoiceToOption(result);
-          const isValidAnswer = currentQuestion.options.some(
-            (opt) => opt.name === matchedAnswer
-          );
-
-          if (isValidAnswer) {
-            handleAnswerChange(matchedAnswer);
-            await voiceService.speak(`You selected: ${matchedAnswer}`);
-          } else {
-            await voiceService.speak("I didn't catch that. Please try again.");
-            toast({
-              title: "Not Recognized",
-              description:
-                "Please try again with one of the available options.",
-              variant: "destructive",
-              duration: 3000,
-            });
-          }
-        }
-        setQuestionProcessed(true);
-      } else if (currentQuestion.type === "rating") {
-        setIsListening(true);
-        toast({
-          title: "Listening",
-          description: "Please say a number between 1 and 10",
-          duration: 3000,
-        });
-
-        const result = await voiceService.startListening();
-        if (result) {
-          const matchedAnswer = matchVoiceToOption(result);
-          const rating = parseInt(matchedAnswer);
-          if (!isNaN(rating) && rating >= 1 && rating <= 10) {
-            handleAnswerChange(rating.toString());
-            await voiceService.speak(`You rated: ${rating}`);
-          } else {
-            await voiceService.speak(
-              "Please provide a valid rating between 1 and 10."
-            );
-            toast({
-              title: "Invalid Rating",
-              description: "Please provide a number between 1 and 10",
-              variant: "destructive",
-              duration: 3000,
-            });
-          }
-        }
-        setQuestionProcessed(true);
-      } else {
-        setIsListening(true);
-        toast({
-          title: "Listening",
-          description: "Please speak your answer",
-          duration: 3000,
-        });
-
-        const result = await voiceService.startListening();
-        if (result) {
-          handleAnswerChange(result);
-          await voiceService.speak("Thank you. I have recorded your answer.");
-        }
-        setQuestionProcessed(true);
-      }
-    } catch (error) {
-      console.error("Error in question automation:", error);
-      setIsListening(false);
-      setIsSpeaking(false);
-      setIsProcessingMultiSelect(false);
-    }
-  };
-
-  // Update the useEffect for question automation
-  useEffect(() => {
-    if (
-      isVoiceEnabled &&
-      currentQuestion &&
-      !isSpeaking &&
-      !isProcessingMultiSelect &&
-      !questionProcessed
-    ) {
-      const automationTimeout = setTimeout(() => {
-        handleQuestionAutomation();
-      }, 1000);
-      return () => clearTimeout(automationTimeout);
-    }
-  }, [
-    currentQuestionIndex,
-    isVoiceEnabled,
-    isSpeaking,
-    isProcessingMultiSelect,
-    questionProcessed,
-  ]);
-
-  // Reset questionProcessed when moving to a new question
-  useEffect(() => {
-    setQuestionProcessed(false);
-  }, [currentQuestionIndex]);
-
-  const isOptionSelected = (optionName: string): boolean => {
-    if (!getCurrentAnswer()) return false;
-    const selections = getCurrentAnswer().split(",").filter(Boolean);
-    return selections.includes(optionName);
-  };
-
-  const handleMultiSelectChange = (optionName: string, checked: boolean) => {
-    // Stop any ongoing voice activities when user manually selects options
-    setIsListening(false);
-    setIsSpeaking(false);
-    setIsProcessingMultiSelect(false);
-    setQuestionProcessed(true);
-    voiceService.stopSpeaking();
-    voiceService.stopListening();
-
-    const currentSelections = getCurrentAnswer()
-      ? getCurrentAnswer().split(",").filter(Boolean)
-      : [];
-    if (checked) {
-      if (!currentSelections.includes(optionName)) {
-        handleAnswerChange([...currentSelections, optionName].join(","));
-      }
-    } else {
-      handleAnswerChange(
-        currentSelections.filter((item) => item !== optionName).join(",")
-      );
-    }
-  };
-
-  const renderQuestionInput = () => {
-    switch (currentQuestion.type) {
-      case "text":
-        return (
-          <div className="space-y-4 max-w-2xl mx-auto">
-            <div className="mb-4 text-center">
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">
-                {currentQuestion.question}
-                {currentQuestion.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
-              </h2>
-            </div>
-            <Textarea
-              placeholder="Type your answer or wait for voice recording..."
-              value={getCurrentAnswer()}
-              onChange={(e) => handleAnswerChange(e.target.value)}
-              className="min-h-[120px] text-lg w-full"
-            />
-          </div>
-        );
-
-      case "single-select":
-        return (
-          <div className="space-y-4 max-w-2xl mx-auto">
-            <div className="mb-4 text-center">
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">
-                {currentQuestion.question}
-                {currentQuestion.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
-              </h2>
-            </div>
-            <RadioGroup
-              value={getCurrentAnswer()}
-              onValueChange={handleAnswerChange}
-              className="space-y-3"
-            >
-              {currentQuestion.options?.map((option) => (
-                <div key={option.value} className="flex items-center space-x-2">
-                  <RadioGroupItem
-                    value={option.name}
-                    id={`option-${option.value}`}
-                  />
-                  <Label
-                    htmlFor={`option-${option.value}`}
-                    className="text-lg cursor-pointer flex-1 py-2"
-                  >
-                    {option.name}
-                  </Label>
-                </div>
-              ))}
-            </RadioGroup>
-          </div>
-        );
-
-      case "multi-select":
-        return (
-          <div className="space-y-4 max-w-2xl mx-auto">
-            <div className="mb-4 text-center">
-              <h2 className="text-xl font-semibold text-gray-900 mb-1">
-                {currentQuestion.question}
-                {currentQuestion.required && (
-                  <span className="text-red-500 ml-1">*</span>
-                )}
-              </h2>
-            </div>
-            <div className="space-y-3">
-              {currentQuestion.options?.map((option) => (
-                <div key={option.value} className="flex items-center space-x-3">
-                  <Checkbox
-                    id={`multi-option-${option.value}`}
-                    checked={isOptionSelected(option.name)}
-                    onCheckedChange={(checked) =>
-                      handleMultiSelectChange(option.name, !!checked)
-                    }
-                  />
-                  <Label
-                    htmlFor={`multi-option-${option.value}`}
-                    className="text-lg cursor-pointer flex-1 py-2"
-                  >
-                    {option.name}
-                  </Label>
-                </div>
-              ))}
-            </div>
-          </div>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  const renderVoiceStatus = () => {
-    let statusText = "Waiting...";
-    let icon = null;
-    let bgColor = "bg-gray-100";
-    let textColor = "text-gray-600";
-
-    if (isSpeaking) {
-      statusText = "Reading...";
-      icon = <Volume2 className="w-4 h-4" />;
-      bgColor = "bg-blue-100";
-      textColor = "text-blue-600";
-    } else if (isListening) {
-      statusText = "Listening...";
-      icon = <Mic className="w-4 h-4" />;
-      bgColor = "bg-green-100";
-      textColor = "text-green-600";
-    }
-
-    return (
-      <div
-        className={`flex items-center justify-center gap-2 py-2 px-4 rounded-md ${bgColor} ${textColor} font-medium text-sm mt-4`}
-      >
-        {icon}
-        <span>{statusText}</span>
-      </div>
-    );
-  };
-
-  // Add new function to handle survey start
-  const handleStartSurvey = async () => {
-    try {
-      // Initialize speech synthesis with user interaction
-      const utterance = new SpeechSynthesisUtterance("");
-      window.speechSynthesis.speak(utterance);
-
-      // Brief pause to ensure initialization is complete
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      // Start the survey
-      setCurrentQuestionIndex(0);
-    } catch (error) {
-      console.error("Error initializing speech:", error);
-      // Start survey anyway even if speech fails
-      setCurrentQuestionIndex(0);
-    }
-  };
-
-  // Render welcome screen
-  const renderWelcomeScreen = () => {
-    return (
-      <Card className="p-8 mb-8 shadow-lg text-center">
-        <div className="space-y-6 max-w-2xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900">
-            Welcome to Voice Survey
-          </h1>
-          <p className="text-lg text-gray-600">
-            This survey uses voice interaction to make it easier for you to
-            respond. Please ensure your microphone is connected and click the
-            button below to begin.
-          </p>
-          <div className="flex justify-center gap-4">
-            <Button
-              onClick={handleStartSurvey}
-              className="flex items-center gap-2 text-lg px-6 py-3"
-            >
-              <Volume2 className="w-5 h-5" />
-              Start Survey
-            </Button>
-          </div>
-        </div>
-      </Card>
-    );
-  };
-
   if (showThankYou) {
     return <ThankYou onStartNewSurvey={handleStartNewSurvey} />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="relative w-full">
-        <div className="absolute left-0 top-0 pl-8 pt-4">
-          <img src="/logo.png" alt="Survey Logo" className="h-16 w-auto" />
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+      <div className="max-w-2xl mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Voice Survey
+          </h1>
+          <p className="text-gray-600">
+            Answer questions using your voice or keyboard
+          </p>
         </div>
-        <div className="max-w-2xl mx-auto px-4 pt-4 pb-1">
-          {currentQuestionIndex === -1 ? (
-            renderWelcomeScreen()
-          ) : (
-            <>
-              <div className="mb-8 text-center">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">
-                  Voice Survey
-                </h1>
-                <p className="text-gray-600">
-                  Answer questions using your voice or keyboard
-                </p>
-              </div>
 
-              {/* Progress */}
-              <div className="mb-8">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm text-gray-600">
-                    Question {currentQuestionIndex + 1} of{" "}
-                    {surveyQuestions.length}
-                  </span>
-                  <span className="text-sm text-gray-600">
-                    {Math.round(progress)}% Complete
-                  </span>
-                </div>
-                <Progress value={progress} className="h-2" />
-              </div>
+        {/* Progress */}
+        <div className="mb-8">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm text-gray-600">
+              Question {currentQuestionIndex + 1} of {surveyQuestions.length}
+            </span>
+            <span className="text-sm text-gray-600">
+              {Math.round(progress)}% Complete
+            </span>
+          </div>
+          <Progress value={progress} className="h-2" />
+        </div>
 
-              {/* Voice Controls */}
-              <div className="flex justify-center gap-4 mb-4">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={readQuestion}
-                  disabled={isSpeaking || isListening}
-                  className="flex items-center gap-2"
-                >
-                  <Volume2 size={16} />
-                  {isSpeaking ? "Reading..." : "Read Question Again"}
-                </Button>
-              </div>
+        {/* Voice Controls */}
+        <div className="flex justify-center gap-4 mb-8">
+          <Button
+            variant={isVoiceEnabled ? "default" : "outline"}
+            size="sm"
+            onClick={toggleVoice}
+            className="flex items-center gap-2"
+          >
+            {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+            Voice {isVoiceEnabled ? "On" : "Off"}
+          </Button>
 
-              {/* Question Card */}
-              <Card className="p-6 mb-8 shadow-lg">
-                <div className="max-w-2xl mx-auto">
-                  {renderQuestionInput()}
-                  <div className="flex justify-center mt-4">
-                    {renderVoiceStatus()}
-                  </div>
-                </div>
-              </Card>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={readQuestion}
+            disabled={!isVoiceEnabled || isSpeaking}
+            className="flex items-center gap-2"
+          >
+            <Volume2 size={16} />
+            {isSpeaking ? "Reading..." : "Read Question"}
+          </Button>
+        </div>
 
-              {/* Navigation */}
-              <div className="flex justify-between max-w-2xl mx-auto mb-8">
-                <Button
-                  variant="outline"
-                  onClick={handlePrevious}
-                  disabled={isFirstQuestion}
-                  className="flex items-center gap-2"
-                >
-                  <ArrowLeft size={16} />
-                  Previous
-                </Button>
+        {/* Question Card */}
+        <Card className="p-6 mb-8 shadow-lg">
+          <SurveyQuestion
+            question={currentQuestion}
+            answer={getCurrentAnswer()}
+            onAnswerChange={handleAnswerChange}
+            isListening={isListening}
+            onStartRecording={startVoiceRecording}
+            onStopRecording={stopVoiceRecording}
+            voiceEnabled={isVoiceEnabled}
+            isSpeaking={isSpeaking}
+            onStopSpeaking={handleStopSpeaking}
+          />
+        </Card>
 
-                <Button
-                  onClick={handleNext}
-                  disabled={!canProceed()}
-                  className="flex items-center gap-2"
-                >
-                  {isLastQuestion ? "Submit" : "Next"}
-                  <ArrowRight size={16} />
-                </Button>
-              </div>
-            </>
-          )}
+        {/* Navigation */}
+        <div className="flex justify-between">
+          <Button
+            variant="outline"
+            onClick={handlePrevious}
+            disabled={isFirstQuestion}
+            className="flex items-center gap-2"
+          >
+            <ArrowLeft size={16} />
+            Previous
+          </Button>
+
+          <Button
+            onClick={handleNext}
+            disabled={!canProceed()}
+            className="flex items-center gap-2"
+          >
+            {isLastQuestion ? "Submit" : "Next"}
+            <ArrowRight size={16} />
+          </Button>
         </div>
       </div>
     </div>
