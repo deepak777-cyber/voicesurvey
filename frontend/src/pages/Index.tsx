@@ -248,12 +248,19 @@ const Index = () => {
 
       await voiceService.speak(textToRead);
 
-      // Wait a short moment after speaking finishes before starting recording
+      // Add a brief pause and notification before starting recording
+      toast({
+        title: "Get Ready",
+        description: "Recording will start in a moment...",
+        duration: 1000,
+      });
+
+      // Wait longer after speaking finishes before starting recording
       setTimeout(() => {
         if (!isListening) {
           startVoiceRecording();
         }
-      }, 100);
+      }, 1500);
     } catch (error) {
       console.error("Speech error:", error);
     } finally {
@@ -388,6 +395,13 @@ const Index = () => {
 
     setIsListening(true);
     try {
+      // Show recording started toast
+      toast({
+        title: "Recording Started",
+        description: "Listening for your response...",
+        duration: 2000,
+      });
+
       const result = await voiceService.startListening();
       if (result) {
         const matchedAnswer = matchVoiceToOption(result);

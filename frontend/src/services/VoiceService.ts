@@ -118,140 +118,106 @@ export class VoiceService {
   }
 
   public async startListening(): Promise<string> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // Stop any ongoing recording/recognition
-        this.stopListening();
-        this.stopSpeaking();
+    return new Promise((resolve, reject) => {
+      if (!this.recognition) {
+        reject(new Error("Speech recognition not supported"));
+        return;
+      }
 
-        // Initialize if needed
-        if (!this.isInitialized) {
-          await this.initialize();
-        }
+      let finalTranscript = "";
+      let bestInterimTranscript = "";
+      let bestConfidence = 0;
+      let hasReceivedResults = false;
+      let timeoutId: NodeJS.Timeout | null = null;
 
-        if (!this.recognition) {
-          throw new Error("Speech recognition not available");
-        }
+      this.recognition.onresult = (event) => {
+        hasReceivedResults = true;
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          // Check all alternatives for the best confidence
+          for (let j = 0; j < event.results[i].length; j++) {
+            const transcript = event.results[i][j].transcript.trim();
+            const confidence = event.results[i][j].confidence;
 
-        let finalTranscript = "";
-        let timeoutId: NodeJS.Timeout | null = null;
-
-        this.recognition.onresult = (event) => {
-          let interimTranscript = "";
-          let bestConfidence = 0;
-          let bestTranscript = "";
-
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            // Check all alternatives for the best confidence
-            for (let j = 0; j < event.results[i].length; j++) {
-              const transcript = event.results[i][j].transcript;
-              const confidence = event.results[i][j].confidence;
-
-              // For short words, we prioritize exact matches
-              if (transcript.trim().length <= 4 && confidence > 0.7) {
-                bestTranscript = transcript;
-                break;
-              }
-
-              // For longer phrases, use the highest confidence
-              if (confidence > bestConfidence) {
+            // For short words, we prioritize exact matches
+            if (transcript.length <= 4 && confidence > 0.7) {
+              if (event.results[i].isFinal) {
+                finalTranscript = transcript;
+              } else {
+                bestInterimTranscript = transcript;
                 bestConfidence = confidence;
-                bestTranscript = transcript;
+              }
+              break;
+            }
+
+            // For longer phrases, use the highest confidence
+            if (confidence > bestConfidence) {
+              bestConfidence = confidence;
+              if (event.results[i].isFinal) {
+                finalTranscript = transcript;
+              } else {
+                bestInterimTranscript = transcript;
               }
             }
-
-            if (event.results[i].isFinal) {
-              finalTranscript = bestTranscript;
-              console.log(
-                "Final transcript:",
-                finalTranscript,
-                "Confidence:",
-                bestConfidence
-              );
-
-              // Clear any existing timeout when we get final results
-              if (timeoutId) clearTimeout(timeoutId);
-
-              // Stop recognition after getting final result
-              this.recognition?.stop();
-            } else {
-              interimTranscript = bestTranscript;
-              console.log(
-                "Interim transcript:",
-                interimTranscript,
-                "Confidence:",
-                bestConfidence
-              );
-            }
           }
-        };
+        }
 
-        this.recognition.onend = () => {
-          console.log("Speech recognition ended");
+        console.log(
+          event.results[event.results.length - 1].isFinal
+            ? `Final transcript: ${finalTranscript}`
+            : `Interim transcript: ${bestInterimTranscript}`,
+          `Confidence: ${bestConfidence}`
+        );
+
+        // If we have a final result, use it
+        if (finalTranscript) {
           if (timeoutId) clearTimeout(timeoutId);
+          this.recognition?.stop();
+          resolve(finalTranscript);
+        }
+      };
 
-          if (finalTranscript) {
-            resolve(finalTranscript.trim());
+      this.recognition.onend = () => {
+        console.log("Speech recognition ended");
+        if (timeoutId) clearTimeout(timeoutId);
+
+        // If we have a final transcript, we've already resolved
+        if (finalTranscript) return;
+
+        // If we have a good interim result, use it
+        if (bestInterimTranscript && bestConfidence > 0.6) {
+          resolve(bestInterimTranscript);
+          return;
+        }
+
+        // If we received any results but couldn't get a good transcript
+        if (hasReceivedResults) {
+          resolve(bestInterimTranscript || "");
+          return;
+        }
+
+        reject(new Error("No speech detected. Please try speaking again."));
+      };
+
+      // Set a timeout to stop recognition if no speech is detected
+      timeoutId = setTimeout(() => {
+        if (this.recognition) {
+          // If we have any results, use the best one we got
+          if (
+            hasReceivedResults &&
+            (finalTranscript || bestInterimTranscript)
+          ) {
+            this.recognition.stop();
+            resolve(finalTranscript || bestInterimTranscript);
           } else {
-            reject(new Error("No speech detected. Please try speaking again."));
-          }
-        };
-
-        this.recognition.onerror = (event) => {
-          console.error("Speech recognition error:", event.error);
-          if (timeoutId) clearTimeout(timeoutId);
-
-          switch (event.error) {
-            case "not-allowed":
-              reject(
-                new Error("Please allow microphone access to use voice input.")
-              );
-              break;
-            case "no-speech":
-              reject(
-                new Error("No speech was detected. Please try speaking again.")
-              );
-              break;
-            case "network":
-              reject(
-                new Error(
-                  "Network error. Please check your internet connection."
-                )
-              );
-              break;
-            case "aborted":
-              reject(new Error("Voice recording was cancelled."));
-              break;
-            default:
-              reject(new Error(`Voice recording error: ${event.error}`));
-          }
-        };
-
-        // Set a timeout to stop recognition if no speech is detected
-        timeoutId = setTimeout(() => {
-          if (this.recognition && !finalTranscript) {
             this.recognition.stop();
           }
-        }, 7000); // 7 seconds timeout
-
-        try {
-          await this.recognition.start();
-          console.log("Speech recognition started");
-        } catch (error) {
-          if (error instanceof Error) {
-            if (error.message.includes("already started")) {
-              // If recognition is already started, stop it and try again
-              this.stopListening();
-              setTimeout(() => this.startListening(), 100);
-            } else {
-              reject(error);
-            }
-          } else {
-            reject(new Error("Failed to start voice recording"));
-          }
         }
+      }, 5000); // 5 seconds timeout
+
+      try {
+        this.recognition.start();
+        console.log("Speech recognition started");
       } catch (error) {
-        console.error("Error in startListening:", error);
         reject(error);
       }
     });
