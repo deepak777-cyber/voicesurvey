@@ -31,6 +31,7 @@ interface SurveyQuestionProps {
   voiceEnabled: boolean;
   isSpeaking: boolean;
   onStopSpeaking: () => void;
+  isWaitingToRecord: boolean;
 }
 
 export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
@@ -43,6 +44,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   voiceEnabled,
   isSpeaking,
   onStopSpeaking,
+  isWaitingToRecord,
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -298,7 +300,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           variant={isListening ? "destructive" : "outline"}
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
-          disabled={isProcessing || isSpeaking}
+          disabled={isProcessing || isSpeaking || isWaitingToRecord}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
             isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
           }`}
@@ -307,6 +309,8 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           {isProcessing
             ? "Processing..."
             : isSpeaking
+            ? "Please wait..."
+            : isWaitingToRecord
             ? "Please wait..."
             : isListening
             ? "Tap to Stop"

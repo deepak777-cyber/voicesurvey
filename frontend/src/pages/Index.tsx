@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -152,6 +152,12 @@ const Index = () => {
   const [isVoiceSupported, setIsVoiceSupported] = useState(true);
   const { toast } = useToast();
   const [showThankYou, setShowThankYou] = useState(false);
+  const [autoRecordTimeoutId, setAutoRecordTimeoutId] =
+    useState<NodeJS.Timeout | null>(null);
+  const autoRecordTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [hasNavigated, setHasNavigated] = useState(false);
+  const navigationRef = useRef(false);
+  const [isWaitingToRecord, setIsWaitingToRecord] = useState(false);
 
   const currentQuestion = surveyQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
@@ -189,10 +195,82 @@ const Index = () => {
   }, [voiceService]);
 
   useEffect(() => {
-    // Read the current question when it changes
-    if (isVoiceEnabled && currentQuestion) {
-      readQuestion();
-    }
+    // Reset navigation flag when question changes
+    console.log("Question changed to:", currentQuestionIndex);
+    let isMounted = true;
+
+    const setupQuestion = async () => {
+      try {
+        // Stop all voice activities first
+        console.log("Stopping all voice activities...");
+        voiceService.stopListening();
+        voiceService.stopSpeaking();
+        voiceService.reset();
+        setIsListening(false);
+        setIsSpeaking(false);
+        setIsWaitingToRecord(false);
+
+        // Clear any existing timeouts first
+        if (autoRecordTimeoutRef.current) {
+          console.log("Clearing existing timeout from ref");
+          clearTimeout(autoRecordTimeoutRef.current);
+          autoRecordTimeoutRef.current = null;
+        }
+        if (autoRecordTimeoutId) {
+          console.log("Clearing existing timeout from state");
+          clearTimeout(autoRecordTimeoutId);
+          setAutoRecordTimeoutId(null);
+        }
+
+        // Wait for all cleanup to complete
+        await new Promise((resolve) => setTimeout(resolve, 250));
+
+        // Only proceed if still mounted
+        if (!isMounted) return;
+
+        // Reset navigation state
+        navigationRef.current = false;
+        setHasNavigated(false);
+
+        // Initialize voice service fresh
+        console.log("Initializing voice service for new question...");
+        await voiceService.initialize();
+
+        // Only proceed if still mounted
+        if (!isMounted) return;
+
+        if (isVoiceEnabled && currentQuestion) {
+          console.log(
+            "Starting to read question:",
+            currentQuestionIndex,
+            "navigationRef:",
+            navigationRef.current
+          );
+          await readQuestion();
+        }
+      } catch (error) {
+        console.error("Error in setupQuestion:", error);
+      }
+    };
+
+    setupQuestion();
+
+    return () => {
+      isMounted = false;
+      // Clear timeouts in cleanup
+      if (autoRecordTimeoutRef.current) {
+        clearTimeout(autoRecordTimeoutRef.current);
+        autoRecordTimeoutRef.current = null;
+      }
+      if (autoRecordTimeoutId) {
+        clearTimeout(autoRecordTimeoutId);
+        setAutoRecordTimeoutId(null);
+      }
+      setIsWaitingToRecord(false);
+      voiceService.stopListening();
+      voiceService.stopSpeaking();
+      voiceService.reset();
+    };
   }, [currentQuestionIndex, isVoiceEnabled]);
 
   useEffect(() => {
@@ -221,11 +299,29 @@ const Index = () => {
   const readQuestion = async () => {
     if (!isVoiceEnabled) return;
 
+    console.log("Reading question. navigationRef:", navigationRef.current);
+
+    if (navigationRef.current) {
+      console.log("Navigation flag is true before reading, skipping...");
+      return;
+    }
+
+    // Clear any existing timeouts before starting
+    if (autoRecordTimeoutRef.current) {
+      clearTimeout(autoRecordTimeoutRef.current);
+      autoRecordTimeoutRef.current = null;
+    }
+    if (autoRecordTimeoutId) {
+      clearTimeout(autoRecordTimeoutId);
+      setAutoRecordTimeoutId(null);
+    }
+
     setIsSpeaking(true);
+    setIsWaitingToRecord(false);
+
     try {
       let textToRead = currentQuestion.question;
 
-      // Add options for multiple choice and multi-select questions
       if (
         (currentQuestion.type === "single-select" ||
           currentQuestion.type === "multi-select") &&
@@ -240,7 +336,6 @@ const Index = () => {
         }
       }
 
-      // Add instruction for rating questions
       if (currentQuestion.type === "rating") {
         textToRead +=
           ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
@@ -248,21 +343,59 @@ const Index = () => {
 
       await voiceService.speak(textToRead);
 
-      // Add a brief pause and notification before starting recording
-      toast({
-        title: "Get Ready",
-        description: "Recording will start in a moment...",
-        duration: 1000,
-      });
+      // Check navigation ref
+      if (navigationRef.current) {
+        console.log("Navigation occurred during speech, skipping auto-record");
+        setIsWaitingToRecord(false);
+        return;
+      }
 
-      // Wait longer after speaking finishes before starting recording
-      setTimeout(() => {
-        if (!isListening) {
-          startVoiceRecording();
-        }
-      }, 1500);
+      console.log("Finished speaking. navigationRef:", navigationRef.current);
+
+      // Only auto-record if we haven't navigated and no answer yet
+      if (!navigationRef.current && !getCurrentAnswer()) {
+        console.log("Setting up auto-record");
+        setIsWaitingToRecord(true);
+
+        toast({
+          title: "Get Ready",
+          description: "Recording will start in a moment...",
+          duration: 1000,
+        });
+
+        const timeoutId = setTimeout(() => {
+          console.log(
+            "Auto-record timeout triggered. navigationRef:",
+            navigationRef.current
+          );
+
+          // Triple check: not navigated, no answer, and voice is enabled
+          if (!navigationRef.current && !getCurrentAnswer() && isVoiceEnabled) {
+            console.log("Starting auto-record");
+            setIsWaitingToRecord(false);
+            startVoiceRecording();
+          } else {
+            console.log(
+              "Auto-record cancelled. navigationRef:",
+              navigationRef.current
+            );
+            setIsWaitingToRecord(false);
+          }
+        }, 1500);
+
+        // Store timeout ID in both state and ref
+        autoRecordTimeoutRef.current = timeoutId;
+        setAutoRecordTimeoutId(timeoutId);
+      } else {
+        console.log(
+          "Skipping auto-record. navigationRef:",
+          navigationRef.current
+        );
+        setIsWaitingToRecord(false);
+      }
     } catch (error) {
       console.error("Speech error:", error);
+      setIsWaitingToRecord(false);
     } finally {
       setIsSpeaking(false);
     }
@@ -388,23 +521,17 @@ const Index = () => {
       return;
     }
 
-    // Don't start recording if already listening or still speaking
-    if (isListening || isSpeaking) {
+    // Don't start recording if already listening, speaking, or waiting to record
+    if (isListening || isSpeaking || isWaitingToRecord) {
       return;
     }
 
-    setIsListening(true);
     try {
-      // Show recording started toast
-      toast({
-        title: "Recording Started",
-        description: "Listening for your response...",
-        duration: 2000,
-      });
-
+      setIsListening(true);
       const result = await voiceService.startListening();
       if (result) {
         const matchedAnswer = matchVoiceToOption(result);
+        handleAnswerChange(matchedAnswer);
 
         // Check if a valid option was selected
         let isValidAnswer = false;
@@ -429,8 +556,6 @@ const Index = () => {
           isValidAnswer = matchedAnswer.trim() !== "";
         }
 
-        handleAnswerChange(matchedAnswer);
-
         if (isValidAnswer) {
           toast({
             title: "Voice Recorded",
@@ -450,7 +575,10 @@ const Index = () => {
 
       if (error instanceof Error) {
         const errorLower = error.message.toLowerCase();
-
+        if (errorLower.includes("reset called")) {
+          // Silently handle reset-triggered errors
+          return;
+        }
         if (
           errorLower.includes("permission") ||
           errorLower.includes("denied")
@@ -498,6 +626,7 @@ const Index = () => {
       });
     } finally {
       setIsListening(false);
+      setIsWaitingToRecord(false);
     }
   };
 
@@ -518,6 +647,10 @@ const Index = () => {
   };
 
   const handleAnswerChange = (answer: string) => {
+    // Set navigation flags when answer changes
+    navigationRef.current = true;
+    setHasNavigated(true);
+
     const existingAnswerIndex = answers.findIndex(
       (a) => a.questionId === currentQuestion.id
     );
@@ -740,18 +873,74 @@ const Index = () => {
       return;
     }
 
+    console.log("Next clicked. Setting navigation flags");
+    // Set navigation flags
+    navigationRef.current = true;
+    setHasNavigated(true);
+    setIsWaitingToRecord(false);
+
+    // Clear any pending auto-record timeout
+    if (autoRecordTimeoutRef.current) {
+      console.log("Clearing timeout from ref in handleNext");
+      clearTimeout(autoRecordTimeoutRef.current);
+      autoRecordTimeoutRef.current = null;
+    }
+    if (autoRecordTimeoutId) {
+      console.log("Clearing timeout from state in handleNext");
+      clearTimeout(autoRecordTimeoutId);
+      setAutoRecordTimeoutId(null);
+    }
+
+    // Stop all voice activities
+    voiceService.stopListening();
+    voiceService.stopSpeaking();
+    voiceService.reset();
+    setIsListening(false);
+    setIsSpeaking(false);
+
     saveIncompleteResponse();
 
-    if (isLastQuestion) {
-      handleSubmit();
-    } else {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    }
+    // Add a small delay before changing the question
+    setTimeout(() => {
+      if (isLastQuestion) {
+        handleSubmit();
+      } else {
+        setCurrentQuestionIndex(currentQuestionIndex + 1);
+      }
+    }, 100);
   };
 
   const handlePrevious = () => {
     if (!isFirstQuestion) {
-      setCurrentQuestionIndex(currentQuestionIndex - 1);
+      console.log("Previous clicked. Setting navigation flags");
+      // Set navigation flags
+      navigationRef.current = true;
+      setHasNavigated(true);
+      setIsWaitingToRecord(false);
+
+      // Clear any pending auto-record timeout
+      if (autoRecordTimeoutRef.current) {
+        console.log("Clearing timeout from ref in handlePrevious");
+        clearTimeout(autoRecordTimeoutRef.current);
+        autoRecordTimeoutRef.current = null;
+      }
+      if (autoRecordTimeoutId) {
+        console.log("Clearing timeout from state in handlePrevious");
+        clearTimeout(autoRecordTimeoutId);
+        setAutoRecordTimeoutId(null);
+      }
+
+      // Stop all voice activities
+      voiceService.stopListening();
+      voiceService.stopSpeaking();
+      voiceService.reset();
+      setIsListening(false);
+      setIsSpeaking(false);
+
+      // Add a small delay before changing the question
+      setTimeout(() => {
+        setCurrentQuestionIndex(currentQuestionIndex - 1);
+      }, 100);
     }
   };
 
@@ -835,6 +1024,7 @@ const Index = () => {
             voiceEnabled={isVoiceEnabled}
             isSpeaking={isSpeaking}
             onStopSpeaking={handleStopSpeaking}
+            isWaitingToRecord={isWaitingToRecord}
           />
         </Card>
 
