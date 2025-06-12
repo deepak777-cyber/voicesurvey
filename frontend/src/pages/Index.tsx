@@ -158,6 +158,7 @@ const Index = () => {
   const [hasNavigated, setHasNavigated] = useState(false);
   const navigationRef = useRef(false);
   const [isWaitingToRecord, setIsWaitingToRecord] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   const currentQuestion = surveyQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
@@ -169,32 +170,50 @@ const Index = () => {
     localStorage.setItem("surveyAnswers", JSON.stringify(answers));
   }, [answers]);
 
+  // Initialize voice service on component mount
   useEffect(() => {
-    // Initialize voice service
-    voiceService.initialize();
+    const initializeVoice = async () => {
+      try {
+        await voiceService.initialize();
+        const isSupported = voiceService.isSupported();
+        setIsVoiceSupported(isSupported);
+        setIsVoiceEnabled(isSupported);
 
-    // Check voice support on component mount
-    const isSupported = voiceService.isSupported();
-    setIsVoiceSupported(isSupported);
-    setIsVoiceEnabled(isSupported);
+        if (!isSupported) {
+          toast({
+            title: "Voice Features Not Available",
+            description:
+              "Please ensure you've granted microphone permissions and are using a supported browser (Chrome or Safari).",
+            variant: "default",
+            duration: 6000,
+          });
+        }
+        setIsInitialized(true);
+      } catch (error) {
+        console.error("Error initializing voice service:", error);
+        setIsVoiceSupported(false);
+        setIsVoiceEnabled(false);
+        setIsInitialized(true);
+      }
+    };
 
-    if (!isSupported) {
-      toast({
-        title: "Voice Features Not Available",
-        description:
-          "Please ensure you've granted microphone permissions and are using a supported browser (Chrome or Safari).",
-        variant: "default",
-        duration: 6000,
-      });
-    }
+    initializeVoice();
 
     return () => {
       voiceService.stopListening();
       voiceService.stopSpeaking();
+      voiceService.reset();
     };
-  }, [voiceService]);
+  }, []);
 
+  // Handle question changes
   useEffect(() => {
+    // Only proceed if voice service is initialized
+    if (!isInitialized) {
+      console.log("Waiting for voice service initialization...");
+      return;
+    }
+
     // Reset navigation flag when question changes
     console.log("Question changed to:", currentQuestionIndex);
     let isMounted = true;
@@ -232,12 +251,8 @@ const Index = () => {
         navigationRef.current = false;
         setHasNavigated(false);
 
-        // Initialize voice service fresh
-        console.log("Initializing voice service for new question...");
-        await voiceService.initialize();
-
-        // Only proceed if still mounted
-        if (!isMounted) return;
+        // Only proceed if still mounted and voice is supported
+        if (!isMounted || !isVoiceSupported) return;
 
         if (isVoiceEnabled && currentQuestion) {
           console.log(
@@ -271,8 +286,9 @@ const Index = () => {
       voiceService.stopSpeaking();
       voiceService.reset();
     };
-  }, [currentQuestionIndex, isVoiceEnabled]);
+  }, [currentQuestionIndex, isVoiceEnabled, isInitialized]);
 
+  // Set start time when component mounts
   useEffect(() => {
     // Set start time when component mounts
     if (!localStorage.getItem("startTime")) {
@@ -280,13 +296,33 @@ const Index = () => {
     }
   }, []);
 
+  // Clear answers and other data when component mounts
   useEffect(() => {
-    // Clear answers and other data when component mounts
-    localStorage.removeItem("surveyAnswers");
-    localStorage.removeItem("unique_id");
-    localStorage.removeItem("startTime");
-    setAnswers([]);
-    setCurrentQuestionIndex(0);
+    const clearData = () => {
+      localStorage.removeItem("surveyAnswers");
+      localStorage.removeItem("unique_id");
+      localStorage.removeItem("startTime");
+      setAnswers([]);
+      setCurrentQuestionIndex(0);
+    };
+
+    // Only clear data if we're starting fresh (URL has no question parameter)
+    const urlParams = new URLSearchParams(window.location.search);
+    const questionParam = urlParams.get("q");
+
+    if (!questionParam) {
+      clearData();
+    } else {
+      // If there's a question parameter, set that as the current question
+      const questionIndex = parseInt(questionParam) - 1;
+      if (
+        !isNaN(questionIndex) &&
+        questionIndex >= 0 &&
+        questionIndex < surveyQuestions.length
+      ) {
+        setCurrentQuestionIndex(questionIndex);
+      }
+    }
   }, []); // Empty dependency array means this runs once when component mounts
 
   const calculateElapsedTime = () => {
