@@ -114,7 +114,7 @@ export class VoiceService {
     this.recognition.continuous = false; // Changed to false to get complete phrases
     this.recognition.interimResults = true;
     this.recognition.maxAlternatives = 1; // We only need the best result
-    this.recognition.lang = "en-US";
+    this.recognition.lang = "km-KH";
     console.log("Speech recognition configured");
   }
 
@@ -222,54 +222,48 @@ export class VoiceService {
     }
   }
 
-  public async speak(text: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      try {
-        // Check if speech synthesis is available
-        if (!this.synthesis) {
-          console.log(
-            "Speech synthesis not available - continuing without audio"
-          );
-          return resolve();
+public async speak(text: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    try {
+      if (!this.synthesis) {
+        console.log("Speech synthesis not available - continuing without audio");
+        return resolve();
+      }
+
+      this.stopSpeaking();
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "km-KH"; // <== SET KHMER LANGUAGE HERE
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      utterance.voice = speechSynthesis.getVoices().find(v => v.lang.startsWith("km"));
+
+
+      utterance.onend = () => {
+        console.log("Speech completed");
+        resolve();
+      };
+
+      utterance.onerror = (event) => {
+        if (event.error === "not-allowed") {
+          console.log("Speech synthesis blocked - continuing without audio");
+          resolve();
+          return;
         }
 
-        // Cancel any ongoing speech
-        this.stopSpeaking();
+        console.error("Speech error:", event.error);
+        resolve();
+      };
 
-        // Create and configure utterance
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.rate = 1;
-        utterance.pitch = 1;
-        utterance.volume = 1;
+      this.synthesis.speak(utterance);
+    } catch (error) {
+      console.log("Speech did not start - continuing without audio");
+      resolve();
+    }
+  });
+}
 
-        // Handle completion
-        utterance.onend = () => {
-          console.log("Speech completed");
-          resolve();
-        };
-
-        // Handle errors
-        utterance.onerror = (event) => {
-          // Don't treat not-allowed as an error, just continue silently
-          if (event.error === "not-allowed") {
-            console.log("Speech synthesis blocked - continuing without audio");
-            resolve();
-            return;
-          }
-
-          console.error("Speech error:", event.error);
-          // For other errors, still resolve but log them
-          resolve();
-        };
-
-        // Attempt to speak
-        this.synthesis.speak(utterance);
-      } catch (error) {
-        console.log("Speech did not start - continuing without audio");
-        resolve(); // Always resolve, don't reject
-      }
-    });
-  }
 
   stopSpeaking(): void {
     console.log("Stopping speech");
