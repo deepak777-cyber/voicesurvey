@@ -104,6 +104,9 @@ export class VoiceService {
 
         if (window.speechSynthesis) {
           this.synthesis = window.speechSynthesis;
+
+          // Load voices asynchronously (important for iOS Safari)
+          await this.loadVoices();
         } else {
           console.warn("Speech synthesis not supported in this browser");
         }
@@ -126,6 +129,36 @@ export class VoiceService {
     this.recognition.maxAlternatives = 1; // We only need the best result
     this.recognition.lang = this.currentLanguage === "km" ? "km-KH" : "en-US";
     console.log("Speech recognition configured");
+  }
+
+  private async loadVoices(): Promise<void> {
+    return new Promise((resolve) => {
+      // Check if voices are already loaded
+      let voices = speechSynthesis.getVoices();
+
+      if (voices.length > 0) {
+        console.log("Voices already loaded:", voices.length);
+        resolve();
+        return;
+      }
+
+      // Wait for voices to load
+      const onVoicesChanged = () => {
+        voices = speechSynthesis.getVoices();
+        console.log("Voices loaded:", voices.length);
+        speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+        resolve();
+      };
+
+      speechSynthesis.addEventListener("voiceschanged", onVoicesChanged);
+
+      // Fallback timeout in case voices don't load
+      setTimeout(() => {
+        speechSynthesis.removeEventListener("voiceschanged", onVoicesChanged);
+        console.log("Voice loading timeout, continuing with available voices");
+        resolve();
+      }, 3000);
+    });
   }
 
   public startListening(): Promise<string> {
@@ -250,15 +283,77 @@ export class VoiceService {
         utterance.pitch = 1;
         utterance.volume = 1;
 
-        // Try to find a voice for the current language
-        const voices = speechSynthesis.getVoices();
-        const voice = voices.find((v) =>
-          this.currentLanguage === "km"
-            ? v.lang.startsWith("km")
-            : v.lang.startsWith("en")
+        // Enhanced voice selection logic
+        let voices = speechSynthesis.getVoices();
+
+        // If no voices available, try to reload them (common on iOS)
+        if (voices.length === 0) {
+          console.log("No voices available, attempting to reload...");
+          // Trigger voice loading
+          speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+          speechSynthesis.cancel();
+
+          // Wait a bit and try again
+          setTimeout(() => {
+            voices = speechSynthesis.getVoices();
+            console.log("Voices after reload attempt:", voices.length);
+          }, 100);
+        }
+
+        console.log(
+          "Available voices:",
+          voices.map((v) => `${v.name} (${v.lang})`)
         );
-        if (voice) {
-          utterance.voice = voice;
+
+        let selectedVoice = null;
+
+        if (this.currentLanguage === "km") {
+          // Try to find Khmer voices in order of preference
+          selectedVoice =
+            voices.find((v) => v.lang === "km-KH") || // Exact match
+            voices.find((v) => v.lang === "km") || // Just km
+            voices.find((v) => v.lang.startsWith("km")) || // Starts with km
+            voices.find((v) => v.name.toLowerCase().includes("khmer")) || // Name contains khmer
+            voices.find((v) => v.name.toLowerCase().includes("cambodia")); // Name contains cambodia
+
+          if (!selectedVoice) {
+            console.log(
+              "No Khmer voice found, available voices:",
+              voices.map((v) => `${v.name} (${v.lang})`)
+            );
+            // Fallback to any available voice but keep Khmer language setting
+            selectedVoice =
+              voices.find((v) => v.lang.startsWith("en")) || voices[0];
+            if (selectedVoice) {
+              console.log(
+                "Using fallback voice:",
+                selectedVoice.name,
+                selectedVoice.lang
+              );
+            }
+          } else {
+            console.log(
+              "Using Khmer voice:",
+              selectedVoice.name,
+              selectedVoice.lang
+            );
+          }
+        } else {
+          // English voice selection
+          selectedVoice = voices.find((v) => v.lang.startsWith("en"));
+          if (selectedVoice) {
+            console.log(
+              "Using English voice:",
+              selectedVoice.name,
+              selectedVoice.lang
+            );
+          }
+        }
+
+        if (selectedVoice) {
+          utterance.voice = selectedVoice;
+        } else {
+          console.log("No suitable voice found, using default");
         }
 
         utterance.onend = () => {
