@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { Mic, MicOff } from "lucide-react";
+import { Language } from "@/types/language";
 
 interface Option {
   value: number;
@@ -32,6 +33,7 @@ interface SurveyQuestionProps {
   isSpeaking: boolean;
   onStopSpeaking: () => void;
   isWaitingToRecord: boolean;
+  language: Language;
 }
 
 export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
@@ -45,11 +47,15 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   isSpeaking,
   onStopSpeaking,
   isWaitingToRecord,
+  language,
 }) => {
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+
+  // Translation helper function
+  const t = (en: string, km: string) => (language === "en" ? en : km);
 
   const startRecording = async () => {
     // Don't allow recording while speaking
@@ -106,7 +112,9 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
     } catch (err) {
       console.error("Transcription failed:", err);
       if (!answer) {
-        setError("Failed to transcribe audio");
+        setError(
+          t("Failed to transcribe audio", "បរាជ័យក្នុងការបកប្រែអូឌីយ៉ូ")
+        );
       }
     }
   };
@@ -152,7 +160,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
     // For multi-select, handle multiple selections
     if (question.type === "multi-select") {
       const inputParts = normalizedInput.split(
-        /\s+and\s+|\s*,\s*|\s+or\s+|\s+plus\s+/i
+        /\s+and\s+|\s*,\s*|\s+or\s+|\s+plus\s+|\s+និង\s+/i
       );
       const matchedOptions: string[] = [];
 
@@ -198,81 +206,130 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
       }
     }
 
-    // For single selection, try exact match first
-    const exactMatch = question.options.find(
-      (option) =>
-        option.name.toLowerCase().replace(/[^\w\s]/g, "") === normalizedInput
-    );
-    if (exactMatch) {
-      console.log("Exact match found:", exactMatch.name);
-      return exactMatch.name;
-    }
-
-    // Try fuzzy matching for single selection
-    const fuzzyMatches = question.options
-      .map((option) => ({
-        option,
-        distance: levenshteinDistance(
-          option.name.toLowerCase().replace(/[^\w\s]/g, ""),
-          normalizedInput
-        ),
-      }))
-      .sort((a, b) => a.distance - b.distance);
-
-    if (fuzzyMatches[0].distance <= Math.min(3, normalizedInput.length / 3)) {
-      console.log("Fuzzy match found:", fuzzyMatches[0].option.name);
-      return fuzzyMatches[0].option.name;
-    }
-
-    // For rating questions, extract numbers and validate range
-    if (question.type === "rating") {
-      const numbers = normalizedInput.match(
-        /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i
+    // For single select questions
+    if (question.type === "single-select" && question.options) {
+      // Try exact match first
+      const exactMatch = question.options.find(
+        (option) => option.name.toLowerCase() === normalizedInput
       );
-      if (numbers) {
-        const number = convertWordToNumber(numbers[1]);
-        if (number >= 1 && number <= 10) {
-          console.log("Number extracted for rating:", number);
-          return number.toString();
+      if (exactMatch) {
+        return exactMatch.name;
+      }
+
+      // Try partial match if no exact match found
+      const partialMatch = question.options.find(
+        (option) =>
+          option.name.toLowerCase().includes(normalizedInput) ||
+          normalizedInput.includes(option.name.toLowerCase())
+      );
+      if (partialMatch) {
+        return partialMatch.name;
+      }
+
+      // Special handling for yes/no in Khmer
+      if (question.options.length === 2) {
+        const yesPatterns = ["បាទ", "ចាស", "yes", "yeah", "yep"];
+        const noPatterns = ["ទេ", "no", "nope"];
+
+        if (
+          yesPatterns.some((pattern) =>
+            normalizedInput.includes(pattern.toLowerCase())
+          )
+        ) {
+          return (
+            question.options.find((opt) => opt.value === 1)?.name || voiceInput
+          );
+        }
+        if (
+          noPatterns.some((pattern) =>
+            normalizedInput.includes(pattern.toLowerCase())
+          )
+        ) {
+          return (
+            question.options.find((opt) => opt.value === 0)?.name || voiceInput
+          );
         }
       }
     }
 
-    console.log("No match found, returning original input:", voiceInput);
-    return voiceInput;
-  };
+    // For rating questions, convert words to numbers
+    if (question.type === "rating") {
+      const wordToNum: { [key: string]: number } = {
+        // English
+        one: 1,
+        first: 1,
+        two: 2,
+        second: 2,
+        three: 3,
+        third: 3,
+        four: 4,
+        fourth: 4,
+        five: 5,
+        fifth: 5,
+        six: 6,
+        sixth: 6,
+        seven: 7,
+        seventh: 7,
+        eight: 8,
+        eighth: 8,
+        nine: 9,
+        ninth: 9,
+        ten: 10,
+        tenth: 10,
+        // Khmer
+        មួយ: 1,
+        ពីរ: 2,
+        បី: 3,
+        បួន: 4,
+        ប្រាំ: 5,
+        ប្រាំមួយ: 6,
+        ប្រាំពីរ: 7,
+        ប្រាំបី: 8,
+        ប្រាំបួន: 9,
+        ដប់: 10,
+      };
 
-  // Helper function to calculate Levenshtein distance for fuzzy matching
-  const levenshteinDistance = (str1: string, str2: string): number => {
-    const track = Array(str2.length + 1)
-      .fill(null)
-      .map(() => Array(str1.length + 1).fill(null));
+      const lowercaseWord = normalizedInput;
+      const number = wordToNum[lowercaseWord] || parseInt(normalizedInput);
 
-    for (let i = 0; i <= str1.length; i += 1) {
-      track[0][i] = i;
-    }
-    for (let j = 0; j <= str2.length; j += 1) {
-      track[j][0] = j;
-    }
-
-    for (let j = 1; j <= str2.length; j += 1) {
-      for (let i = 1; i <= str1.length; i += 1) {
-        const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        track[j][i] = Math.min(
-          track[j][i - 1] + 1,
-          track[j - 1][i] + 1,
-          track[j - 1][i - 1] + indicator
-        );
+      if (number >= 1 && number <= 10) {
+        return number.toString();
       }
     }
 
-    return track[str2.length][str1.length];
+    return voiceInput;
   };
 
-  // Helper function to convert word numbers to digits
+  const levenshteinDistance = (str1: string, str2: string): number => {
+    const matrix = [];
+
+    for (let i = 0; i <= str2.length; i++) {
+      matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= str1.length; j++) {
+      matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= str2.length; i++) {
+      for (let j = 1; j <= str1.length; j++) {
+        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1,
+            matrix[i][j - 1] + 1,
+            matrix[i - 1][j] + 1
+          );
+        }
+      }
+    }
+
+    return matrix[str2.length][str1.length];
+  };
+
   const convertWordToNumber = (word: string): number => {
     const wordToNum: { [key: string]: number } = {
-      zero: 0,
       one: 1,
       two: 2,
       three: 3,
@@ -307,26 +364,26 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
         >
           {isListening ? <MicOff size={20} /> : <Mic size={20} />}
           {isProcessing
-            ? "Processing..."
+            ? t("Processing...", "កំពុងដំណើរការ...")
             : isSpeaking
-            ? "Please wait..."
+            ? t("Please wait...", "សូមរង់ចាំ...")
             : isWaitingToRecord
-            ? "Please wait..."
+            ? t("Please wait...", "សូមរង់ចាំ...")
             : isListening
-            ? "Tap to Stop"
-            : "Tap to Record"}
+            ? t("Tap to Stop", "ចុចដើម្បីបញ្ឈប់")
+            : t("Tap to Record", "ចុចដើម្បីថត")}
         </Button>
         {isListening && (
           <div className="mt-4 text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-full animate-pulse">
               <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-              Recording... Tap to stop
+              {t("Recording... Tap to stop", "កំពុងថត... ចុចដើម្បីបញ្ឈប់")}
             </div>
           </div>
         )}
         {error && (
           <div className="mt-2 p-3 bg-red-50 text-red-700 rounded-lg text-sm">
-            <p className="font-medium">Recording Error</p>
+            <p className="font-medium">{t("Recording Error", "កំហុសការថត")}</p>
             <p>{error}</p>
           </div>
         )}
@@ -340,7 +397,10 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
         return (
           <div className="space-y-4">
             <Textarea
-              placeholder="Type your answer here or use voice recording..."
+              placeholder={t(
+                "Type your answer here or use voice recording...",
+                "វាយបញ្ចូលចម្លើយរបស់អ្នកនៅទីនេះឬប្រើការថតសំឡេង..."
+              )}
               value={answer}
               onChange={(e) => onAnswerChange(e.target.value)}
               className="min-h-[120px] text-lg"
@@ -374,7 +434,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
             </RadioGroup>
             <div className="text-center">
               <p className="text-sm text-gray-600 mb-2">
-                Or say your choice aloud:
+                {t("Or say your choice aloud:", "ឬនិយាយជម្រើសរបស់អ្នកឮ:")}
               </p>
               {renderVoiceButton()}
             </div>
@@ -405,7 +465,10 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
             </div>
             <div className="text-center">
               <p className="text-sm text-gray-600 mb-2">
-                Or say your choices separated by "and":
+                {t(
+                  'Or say your choices separated by "and":',
+                  'ឬនិយាយជម្រើសរបស់អ្នកដោយបំបែកដោយ "និង":'
+                )}
               </p>
               {renderVoiceButton()}
             </div>
@@ -418,8 +481,8 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           <div className="space-y-6">
             <div className="px-4">
               <div className="flex justify-between text-sm text-gray-600 mb-2">
-                <span>1 - Not likely</span>
-                <span>10 - Very likely</span>
+                <span>{t("1 - Not likely", "1 - មិនទំនង")}</span>
+                <span>{t("10 - Very likely", "10 - ទំនងខ្លាំង")}</span>
               </div>
               <Slider
                 value={[rating]}
@@ -437,7 +500,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
             </div>
             <div className="text-center">
               <p className="text-sm text-gray-600 mb-2">
-                Or say a number from 1 to 10:
+                {t("Or say a number from 1 to 10:", "ឬនិយាយលេខពី 1 ដល់ 10:")}
               </p>
               {renderVoiceButton()}
             </div>
@@ -456,7 +519,9 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           {question.question}
         </h2>
         {question.required && (
-          <p className="text-sm text-red-600">* Required</p>
+          <p className="text-sm text-red-600">
+            {t("* Required", "* ត្រូវការ")}
+          </p>
         )}
       </div>
 
@@ -466,7 +531,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
         <div className="text-center">
           <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-100 text-red-700 rounded-full">
             <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-            Listening... Speak now
+            {t("Listening... Speak now", "កំពុងស្តាប់... និយាយឥឡូវ")}
           </div>
         </div>
       )}

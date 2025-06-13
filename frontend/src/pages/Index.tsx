@@ -38,7 +38,7 @@ interface Answer {
 }
 
 const Index = () => {
-  const [currentLanguage, setCurrentLanguage] = useState<Language>("en");
+  const [currentLanguage, setCurrentLanguage] = useState<Language>("km");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>(() => {
     // Load answers from localStorage on component mount
@@ -1136,6 +1136,7 @@ const Index = () => {
             isSpeaking={isSpeaking}
             onStopSpeaking={handleStopSpeaking}
             isWaitingToRecord={isWaitingToRecord}
+            language={currentLanguage}
           />
         </Card>
 

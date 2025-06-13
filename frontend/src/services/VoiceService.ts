@@ -64,7 +64,7 @@ export class VoiceService {
   private isInitialized = false;
   private isListening = false;
   private stream: MediaStream | null = null;
-  private currentLanguage: Language = "en";
+  private currentLanguage: Language = "km";
 
   constructor() {
     console.log("Initializing VoiceService...");
