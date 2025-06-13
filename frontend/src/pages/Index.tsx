@@ -241,12 +241,18 @@ const Index = () => {
     return Math.floor((Date.now() - startTime) / 1000); // Convert to seconds
   };
 
-  const readQuestion = async () => {
+  const readQuestion = async (manual: boolean = false) => {
     if (!isVoiceEnabled) return;
 
-    console.log("Reading question. navigationRef:", navigationRef.current);
+    console.log(
+      "Reading question. navigationRef:",
+      navigationRef.current,
+      "manual:",
+      manual
+    );
 
-    if (navigationRef.current) {
+    // Only check navigation flag for automatic calls, not manual ones
+    if (!manual && navigationRef.current) {
       console.log("Navigation flag is true before reading, skipping...");
       return;
     }
@@ -307,8 +313,8 @@ const Index = () => {
 
       await voiceService.speak(textToRead);
 
-      // Check navigation ref
-      if (navigationRef.current) {
+      // Only check navigation ref for automatic calls, not manual ones
+      if (!manual && navigationRef.current) {
         console.log("Navigation occurred during speech, skipping auto-record");
         setIsWaitingToRecord(false);
         return;
@@ -316,52 +322,41 @@ const Index = () => {
 
       console.log("Finished speaking. navigationRef:", navigationRef.current);
 
-      // Only auto-record if we haven't navigated and no answer yet
-      if (!navigationRef.current && !getCurrentAnswer()) {
-        console.log("Setting up auto-record");
-        setIsWaitingToRecord(true);
+      // Always auto-record after reading, regardless of whether answer exists
+      console.log("Setting up auto-record");
+      setIsWaitingToRecord(true);
 
-        const toastMessage =
-          currentLanguage === "en"
-            ? "Recording will start in a moment..."
-            : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
+      const toastMessage =
+        currentLanguage === "en"
+          ? "Recording will start in a moment..."
+          : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
 
-        toast({
-          title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
-          description: toastMessage,
-          duration: 1000,
-        });
+      toast({
+        title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
+        description: toastMessage,
+        duration: 1000,
+      });
 
-        const timeoutId = setTimeout(() => {
-          console.log(
-            "Auto-record timeout triggered. navigationRef:",
-            navigationRef.current
-          );
-
-          // Triple check: not navigated, no answer, and voice is enabled
-          if (!navigationRef.current && !getCurrentAnswer() && isVoiceEnabled) {
-            console.log("Starting auto-record");
-            setIsWaitingToRecord(false);
-            startVoiceRecording();
-          } else {
-            console.log(
-              "Auto-record cancelled. navigationRef:",
-              navigationRef.current
-            );
-            setIsWaitingToRecord(false);
-          }
-        }, 1500);
-
-        // Store timeout ID in both state and ref
-        autoRecordTimeoutRef.current = timeoutId;
-        setAutoRecordTimeoutId(timeoutId);
-      } else {
+      const timeoutId = setTimeout(() => {
         console.log(
-          "Skipping auto-record. navigationRef:",
+          "Auto-record timeout triggered. navigationRef:",
           navigationRef.current
         );
-        setIsWaitingToRecord(false);
-      }
+
+        // Check: voice is enabled
+        if (isVoiceEnabled) {
+          console.log("Starting auto-record");
+          setIsWaitingToRecord(false);
+          startVoiceRecording();
+        } else {
+          console.log("Auto-record cancelled. Voice disabled");
+          setIsWaitingToRecord(false);
+        }
+      }, 1500);
+
+      // Store timeout ID in both state and ref
+      autoRecordTimeoutRef.current = timeoutId;
+      setAutoRecordTimeoutId(timeoutId);
     } catch (error) {
       console.error("Speech error:", error);
       setIsWaitingToRecord(false);
@@ -1030,8 +1025,30 @@ const Index = () => {
   };
 
   const handleLanguageChange = (language: Language) => {
+    // Reset navigation flags
+    navigationRef.current = false;
+    setHasNavigated(false);
+
+    // Clear any pending auto-record timeouts
+    if (autoRecordTimeoutRef.current) {
+      clearTimeout(autoRecordTimeoutRef.current);
+      autoRecordTimeoutRef.current = null;
+    }
+    if (autoRecordTimeoutId) {
+      clearTimeout(autoRecordTimeoutId);
+      setAutoRecordTimeoutId(null);
+    }
+
+    // Stop all voice activities
+    voiceService.stopListening();
+    voiceService.stopSpeaking();
+    voiceService.reset();
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsWaitingToRecord(false);
+
+    // Update language and reset state
     setCurrentLanguage(language);
-    // Reset to first question when language changes
     setCurrentQuestionIndex(0);
     setAnswers([]);
   };
@@ -1108,7 +1125,7 @@ const Index = () => {
           <Button
             variant="outline"
             size="sm"
-            onClick={readQuestion}
+            onClick={() => readQuestion(true)}
             disabled={!isVoiceEnabled || isSpeaking}
             className="flex items-center gap-2"
           >
