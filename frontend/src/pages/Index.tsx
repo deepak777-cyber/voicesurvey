@@ -13,6 +13,9 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { SurveyQuestion } from "@/components/SurveyQuestion";
 import { VoiceService } from "@/services/VoiceService";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { Language } from "@/types/language";
+import { getSurveyQuestions } from "@/data/surveyQuestions";
 import config from "@/config";
 import { ThankYou } from "@/components/ThankYou";
 
@@ -34,112 +37,8 @@ interface Answer {
   answer: string;
 }
 
-const surveyQuestions: Question[] = [
-  {
-    id: "1",
-    type: "text",
-    question: "តើអ្នកមានឈ្មោះអ្វី?",
-    required: true,
-  },
-  {
-    id: "2",
-    type: "single-select",
-    question: "តើអ្នកធ្វើការវាយតម្លៃដូចម្តេចចំពោះបទពិសោធន៍រួមជាមួយសេវាកម្មរបស់យើង?",
-    options: [
-      { value: 1, name: "ល្អបំផុត" },
-      { value: 2, name: "ល្អ" },
-      { value: 3, name: "មធ្យម" },
-      { value: 4, name: "អន់" },
-      { value: 5, name: "អន់ខ្លាំង" },
-    ],
-    required: true,
-  },
-  {
-    id: "3",
-    type: "single-select",
-    question: "តើអ្នកពេញចិត្តជាមួយសេវាអតិថិជនរបស់យើងយ៉ាងដូចម្តេច?",
-    options: [
-      { value: 1, name: "មិនពេញចិត្តខ្លាំង" },
-      { value: 2, name: "មិនពេញចិត្ត" },
-      { value: 3, name: "មធ្យម" },
-      { value: 4, name: "ពេញចិត្ត" },
-      { value: 5, name: "ពេញចិត្តខ្លាំង" },
-    ],
-    required: true,
-  },
-  {
-    id: "4_1",
-    type: "single-select",
-    question: "តើអ្នកគិតថាសេវាផ្តល់ជំនួយអតិថិជនមានតម្លៃឬទេ?",
-    options: [
-      { value: 1, name: "បាទ/ចាស" },
-      { value: 0, name: "ទេ" },
-    ],
-    required: true,
-  },
-  {
-    id: "4_2",
-    type: "single-select",
-    question: "តើអ្នកគិតថាការប្រើប្រាស់ងាយស្រួលមានតម្លៃឬទេ?",
-    options: [
-      { value: 1, name: "បាទ/ចាស" },
-      { value: 0, name: "ទេ" },
-    ],
-    required: true,
-  },
-  {
-    id: "4_3",
-    type: "single-select",
-    question: "តើអ្នកគិតថាតម្លៃល្អមានតម្លៃឬទេ?",
-    options: [
-      { value: 1, name: "បាទ/ចាស" },
-      { value: 0, name: "ទេ" },
-    ],
-    required: true,
-  },
-  {
-    id: "4_4",
-    type: "single-select",
-    question: "តើអ្នកគិតថាការដឹកជញ្ជូនលឿនមានតម្លៃឬទេ?",
-    options: [
-      { value: 1, name: "បាទ/ចាស" },
-      { value: 0, name: "ទេ" },
-    ],
-    required: true,
-  },
-  {
-    id: "4_5",
-    type: "single-select",
-    question: "តើអ្នកគិតថាផលិតផលដែលមានគុណភាពមានតម្លៃឬទេ?",
-    options: [
-      { value: 1, name: "បាទ/ចាស" },
-      { value: 0, name: "ទេ" },
-    ],
-    required: true,
-  },
-  {
-    id: "5",
-    type: "text",
-    question: "តើយើងអាចធ្វើអ្វីដើម្បីធ្វើឲ្យសេវាកម្មរបស់យើងប្រសើរឡើង?",
-    required: false,
-  },
-  {
-    id: "6",
-    type: "single-select",
-    question: "តើអ្នកបានដឹងអំពីយើងដោយរបៀបណា?",
-    options: [
-      { value: 1, name: "បណ្តាញសង្គម" },
-      { value: 2, name: "មិត្តភក្តិណែនាំ" },
-      { value: 3, name: "ម៉ាស៊ីនស្វែងរក" },
-      { value: 4, name: "ពាណិជ្ជកម្ម" },
-      { value: 5, name: "ផ្សេងទៀត" },
-    ],
-    required: true,
-  },
-];
-
-
 const Index = () => {
+  const [currentLanguage, setCurrentLanguage] = useState<Language>("en");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Answer[]>(() => {
     // Load answers from localStorage on component mount
@@ -161,6 +60,7 @@ const Index = () => {
   const [isWaitingToRecord, setIsWaitingToRecord] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
   const isLastQuestion = currentQuestionIndex === surveyQuestions.length - 1;
@@ -176,6 +76,7 @@ const Index = () => {
     const initializeVoice = async () => {
       try {
         await voiceService.initialize();
+        voiceService.setLanguage(currentLanguage);
         const isSupported = voiceService.isSupported();
         setIsVoiceSupported(isSupported);
         setIsVoiceEnabled(isSupported);
@@ -206,6 +107,13 @@ const Index = () => {
       voiceService.reset();
     };
   }, []);
+
+  // Update voice service language when language changes
+  useEffect(() => {
+    if (isInitialized) {
+      voiceService.setLanguage(currentLanguage);
+    }
+  }, [currentLanguage, isInitialized]);
 
   // Handle question changes
   useEffect(() => {
@@ -287,7 +195,7 @@ const Index = () => {
       voiceService.stopSpeaking();
       voiceService.reset();
     };
-  }, [currentQuestionIndex, isVoiceEnabled, isInitialized]);
+  }, [currentQuestionIndex, isVoiceEnabled, isInitialized, currentLanguage]);
 
   // Set start time when component mounts
   useEffect(() => {
@@ -364,18 +272,37 @@ const Index = () => {
           currentQuestion.type === "multi-select") &&
         currentQuestion.options
       ) {
-        textToRead += ". Your options are: ";
-        textToRead += currentQuestion.options.map((opt) => opt.name).join(", ");
+        if (currentLanguage === "en") {
+          textToRead += ". Your options are: ";
+          textToRead += currentQuestion.options
+            .map((opt) => opt.name)
+            .join(", ");
 
-        if (currentQuestion.type === "multi-select") {
-          textToRead +=
-            '. You can select multiple options by saying them separated by "and".';
+          if (currentQuestion.type === "multi-select") {
+            textToRead +=
+              '. You can select multiple options by saying them separated by "and".';
+          }
+        } else {
+          textToRead += ". ជម្រើសរបស់អ្នកគឺ: ";
+          textToRead += currentQuestion.options
+            .map((opt) => opt.name)
+            .join(", ");
+
+          if (currentQuestion.type === "multi-select") {
+            textToRead +=
+              '. អ្នកអាចជ្រើសរើសជម្រើសច្រើនដោយនិយាយពួកវាដោយបំបែកដោយ "និង".';
+          }
         }
       }
 
       if (currentQuestion.type === "rating") {
-        textToRead +=
-          ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
+        if (currentLanguage === "en") {
+          textToRead +=
+            ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
+        } else {
+          textToRead +=
+            ". សូមវាយតម្លៃពី 1 ដល់ 10 ដែល 1 គឺមិនទំនងនិង 10 គឺទំនងខ្លាំង.";
+        }
       }
 
       await voiceService.speak(textToRead);
@@ -394,9 +321,14 @@ const Index = () => {
         console.log("Setting up auto-record");
         setIsWaitingToRecord(true);
 
+        const toastMessage =
+          currentLanguage === "en"
+            ? "Recording will start in a moment..."
+            : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
+
         toast({
-          title: "Get Ready",
-          description: "Recording will start in a moment...",
+          title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
+          description: toastMessage,
           duration: 1000,
         });
 
@@ -448,8 +380,9 @@ const Index = () => {
     if (currentQuestion.type === "rating") {
       const normalizedInput = voiceInput.toLowerCase().trim();
 
-      // Word to number mapping
+      // Word to number mapping (both English and Khmer)
       const wordToNumber: { [key: string]: string } = {
+        // English
         one: "1",
         first: "1",
         two: "2",
@@ -470,6 +403,17 @@ const Index = () => {
         ninth: "9",
         ten: "10",
         tenth: "10",
+        // Khmer
+        មួយ: "1",
+        ពីរ: "2",
+        បី: "3",
+        បួន: "4",
+        ប្រាំ: "5",
+        ប្រាំមួយ: "6",
+        ប្រាំពីរ: "7",
+        ប្រាំបី: "8",
+        ប្រាំបួន: "9",
+        ដប់: "10",
       };
 
       // Try to match word numbers first
@@ -479,7 +423,7 @@ const Index = () => {
         }
       }
 
-      // Try to match digits (including variations like "number 5" or "rating 8")
+      // Try to match digits
       const numberMatch = normalizedInput.match(/\b(\d+)\b/);
       if (numberMatch) {
         const number = parseInt(numberMatch[1]);
@@ -495,7 +439,8 @@ const Index = () => {
 
     // For multi-select questions, handle multiple selections
     if (currentQuestion.type === "multi-select" && currentQuestion.options) {
-      const inputParts = normalizedInput.split(/\s+and\s+|\s*,\s*/);
+      // Split on Khmer and English conjunctions
+      const inputParts = normalizedInput.split(/\s+និង\s+|\s+and\s+|\s*,\s*/);
       const matchedOptions: string[] = [];
 
       inputParts.forEach((part) => {
@@ -533,6 +478,33 @@ const Index = () => {
       if (partialMatch) {
         return partialMatch.name;
       }
+
+      // Special handling for yes/no in Khmer
+      if (currentQuestion.options.length === 2) {
+        const yesPatterns = ["បាទ", "ចាស", "yes", "yeah", "yep"];
+        const noPatterns = ["ទេ", "no", "nope"];
+
+        if (
+          yesPatterns.some((pattern) =>
+            normalizedInput.includes(pattern.toLowerCase())
+          )
+        ) {
+          return (
+            currentQuestion.options.find((opt) => opt.value === 1)?.name ||
+            voiceInput
+          );
+        }
+        if (
+          noPatterns.some((pattern) =>
+            normalizedInput.includes(pattern.toLowerCase())
+          )
+        ) {
+          return (
+            currentQuestion.options.find((opt) => opt.value === 0)?.name ||
+            voiceInput
+          );
+        }
+      }
     }
 
     return voiceInput;
@@ -540,19 +512,34 @@ const Index = () => {
 
   const startVoiceRecording = async () => {
     if (!isVoiceEnabled) {
+      const errorMessage =
+        currentLanguage === "en"
+          ? "Please enable voice features to use voice recording."
+          : "សូមបើកមុខងារសំឡេងដើម្បីប្រើការថតសំឡេង។";
+
       toast({
-        title: "Voice Features Disabled",
-        description: "Please enable voice features to use voice recording.",
+        title:
+          currentLanguage === "en"
+            ? "Voice Features Disabled"
+            : "មុខងារសំឡេងត្រូវបានបិទ",
+        description: errorMessage,
         variant: "destructive",
       });
       return;
     }
 
     if (!isVoiceSupported) {
+      const errorMessage =
+        currentLanguage === "en"
+          ? "Please ensure you've granted microphone permissions and are using a supported browser."
+          : "សូមធានាថាអ្នកបានផ្តល់ការអនុញ្ញាតមីក្រូហ្វូននិងប្រើអ្នករុករកដែលគាំទ្រ។";
+
       toast({
-        title: "Browser Support Issue",
-        description:
-          "Please ensure you've granted microphone permissions and are using a supported browser.",
+        title:
+          currentLanguage === "en"
+            ? "Browser Support Issue"
+            : "បញ្ហាការគាំទ្រអ្នករុករក",
+        description: errorMessage,
         variant: "destructive",
       });
       return;
@@ -594,21 +581,38 @@ const Index = () => {
         }
 
         if (isValidAnswer) {
+          const successMessage =
+            currentLanguage === "en"
+              ? "Your response has been captured successfully."
+              : "ការឆ្លើយតបរបស់អ្នកត្រូវបានចាប់យកដោយជោគជ័យ។";
+
           toast({
-            title: "Voice Recorded",
-            description: "Your response has been captured successfully.",
+            title:
+              currentLanguage === "en" ? "Voice Recorded" : "សំឡេងត្រូវបានថត",
+            description: successMessage,
           });
         } else if (currentQuestion.type !== "text") {
+          const errorMessage =
+            currentLanguage === "en"
+              ? "Please try again with one of the available options."
+              : "សូមព្យាយាមម្តងទៀតជាមួយជម្រើសដែលមាន។";
+
           toast({
-            title: "No Valid Option Selected",
-            description: "Please try again with one of the available options.",
+            title:
+              currentLanguage === "en"
+                ? "No Valid Option Selected"
+                : "គ្មានជម្រើសត្រឹមត្រូវត្រូវបានជ្រើសរើស",
+            description: errorMessage,
             variant: "destructive",
           });
         }
       }
     } catch (error) {
       console.error("Error recording voice:", error);
-      let errorMessage = "Could not record your voice. Please try again.";
+      let errorMessage =
+        currentLanguage === "en"
+          ? "Could not record your voice. Please try again."
+          : "មិនអាចថតសំឡេងរបស់អ្នកបានទេ។ សូមព្យាយាមម្តងទៀត។";
 
       if (error instanceof Error) {
         const errorLower = error.message.toLowerCase();
@@ -621,42 +625,56 @@ const Index = () => {
           errorLower.includes("denied")
         ) {
           errorMessage =
-            "Microphone access was denied. Please check your browser settings and make sure microphone permissions are enabled.";
+            currentLanguage === "en"
+              ? "Microphone access was denied. Please check your browser settings and make sure microphone permissions are enabled."
+              : "ការចូលប្រើមីក្រូហ្វូនត្រូវបានបដិសេធ។ សូមពិនិត្យការកំណត់អ្នករុករករបស់អ្នកនិងធានាថាការអនុញ្ញាតមីក្រូហ្វូនត្រូវបានបើក។";
         } else if (
           errorLower.includes("not found") ||
           errorLower.includes("no microphone")
         ) {
           errorMessage =
-            "No microphone found. Please check your device settings and ensure a microphone is available.";
+            currentLanguage === "en"
+              ? "No microphone found. Please check your device settings and ensure a microphone is available."
+              : "រកមិនឃើញមីក្រូហ្វូនទេ។ សូមពិនិត្យការកំណត់ឧបករណ៍របស់អ្នកនិងធានាថាមីក្រូហ្វូនមាន។";
         } else if (
           errorLower.includes("not supported") ||
           errorLower.includes("mimetype")
         ) {
           errorMessage =
-            "Your browser doesn't support the required audio format. Please try using Chrome or Firefox.";
+            currentLanguage === "en"
+              ? "Your browser doesn't support the required audio format. Please try using Chrome or Firefox."
+              : "អ្នករុករករបស់អ្នកមិនគាំទ្រទម្រង់អូឌីដែលត្រូវការទេ។ សូមព្យាយាមប្រើ Chrome ឬ Firefox។";
         } else if (
           errorLower.includes("in use") ||
           errorLower.includes("already")
         ) {
           errorMessage =
-            "Microphone is being used by another application. Please close other apps that might be using the microphone.";
+            currentLanguage === "en"
+              ? "Microphone is being used by another application. Please close other apps that might be using the microphone."
+              : "មីក្រូហ្វូនកំពុងត្រូវបានប្រើដោយកម្មវិធីផ្សេងទៀត។ សូមបិទកម្មវិធីផ្សេងទៀតដែលអាចប្រើមីក្រូហ្វូន។";
         } else if (
           errorLower.includes("secure") ||
           errorLower.includes("ssl")
         ) {
           errorMessage =
-            "Voice recording requires a secure connection. Please ensure you're using HTTPS.";
+            currentLanguage === "en"
+              ? "Voice recording requires a secure connection. Please ensure you're using HTTPS."
+              : "ការថតសំឡេងត្រូវការការតភ្ជាប់ដែលមានសុវត្ថិភាព។ សូមធានាថាអ្នកកំពុងប្រើ HTTPS។";
         } else if (errorLower.includes("timeout")) {
           errorMessage =
-            "Recording timed out. Please try speaking more quickly after pressing the record button.";
+            currentLanguage === "en"
+              ? "Recording timed out. Please try speaking more quickly after pressing the record button."
+              : "ការថតផុតកំណត់ពេលវេលា។ សូមព្យាយាមនិយាយលឿនជាងបន្ទាប់ពីចុចប៊ូតុងថត។";
         } else if (errorLower.includes("network")) {
           errorMessage =
-            "A network error occurred. Please check your internet connection.";
+            currentLanguage === "en"
+              ? "A network error occurred. Please check your internet connection."
+              : "កំហុសបណ្តាញបានកើតឡើង។ សូមពិនិត្យការតភ្ជាប់អ៊ីនធឺណិតរបស់អ្នក។";
         }
       }
 
       toast({
-        title: "Recording Error",
+        title: currentLanguage === "en" ? "Recording Error" : "កំហុសការថត",
         description: errorMessage,
         variant: "destructive",
         duration: 6000,
@@ -795,7 +813,7 @@ const Index = () => {
       sys_device: navigator.userAgent,
       survey_status: "incomplete",
       elapsed_time: calculateElapsedTime(),
-      language: "km",
+      language: currentLanguage,
       ...formattedResponses,
     };
 
@@ -837,10 +855,16 @@ const Index = () => {
       );
 
     if (missingRequired.length > 0) {
+      const errorMessage =
+        currentLanguage === "en"
+          ? "Please answer all required questions before submitting."
+          : "សូមឆ្លើយសំណួរដែលត្រូវការទាំងអស់មុនពេលដាក់ស្នើ។";
+
       toast({
-        title: "រួចរាល់",
-        description: "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...",
-        // variant: "destructive",
+        title:
+          currentLanguage === "en" ? "Required Questions" : "សំណួរដែលត្រូវការ",
+        description: errorMessage,
+        variant: "destructive",
       });
       return;
     }
@@ -856,7 +880,7 @@ const Index = () => {
       sys_device: navigator.userAgent,
       survey_status: "completed",
       elapsed_time: calculateElapsedTime(),
-      language: "km",
+      language: currentLanguage,
       ...formattedResponses,
     };
 
@@ -884,17 +908,28 @@ const Index = () => {
       setAnswers([]);
       setShowThankYou(true); // Show thank you page instead of reloading
 
+      const successMessage =
+        currentLanguage === "en"
+          ? "Thank you for your responses! Your feedback has been saved."
+          : "សូមអរគុណសម្រាប់ការឆ្លើយតបរបស់អ្នក! ការអត្ថាធិប្បាយរបស់អ្នកត្រូវបានរក្សាទុក។";
+
       toast({
-        title: "Survey Completed",
-        description:
-          "Thank you for your responses! Your feedback has been saved.",
+        title:
+          currentLanguage === "en"
+            ? "Survey Completed"
+            : "ការស្ទង់មតិបានបញ្ចប់",
+        description: successMessage,
       });
     } catch (err) {
       console.error("Error saving survey:", err);
+      const errorMessage =
+        currentLanguage === "en"
+          ? "There was an error saving your responses. Please try again."
+          : "មានកំហុសក្នុងការរក្សាទុកការឆ្លើយតបរបស់អ្នក។ សូមព្យាយាមម្តងទៀត។";
+
       toast({
-        title: "Error",
-        description:
-          "There was an error saving your responses. Please try again.",
+        title: currentLanguage === "en" ? "Error" : "កំហុស",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -902,9 +937,14 @@ const Index = () => {
 
   const handleNext = () => {
     if (!canProceed()) {
+      const errorMessage =
+        currentLanguage === "en"
+          ? "Please provide an answer before proceeding."
+          : "សូមផ្តល់ចម្លើយមុនពេលបន្ត។";
+
       toast({
-        title: "Required Field",
-        description: "Please provide an answer before proceeding.",
+        title: currentLanguage === "en" ? "Required Field" : "វាលដែលត្រូវការ",
+        description: errorMessage,
         variant: "destructive",
       });
       return;
@@ -989,6 +1029,13 @@ const Index = () => {
     }
   };
 
+  const handleLanguageChange = (language: Language) => {
+    setCurrentLanguage(language);
+    // Reset to first question when language changes
+    setCurrentQuestionIndex(0);
+    setAnswers([]);
+  };
+
   if (showThankYou) {
     return <ThankYou onStartNewSurvey={handleStartNewSurvey} />;
   }
@@ -1005,21 +1052,35 @@ const Index = () => {
         <div className="text-center mb-8">
           <div className="h-12 md:h-16"></div> {/* Spacer for logo */}
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-2">
-            ស្ទង់មតិដោយសំឡេង
+            {currentLanguage === "en" ? "Voice Survey" : "ស្ទង់មតិដោយសំឡេង"}
           </h1>
           <p className="text-gray-600">
-            សូមឆ្លើយសំណួរដោយប្រើសំឡេងឬក្តារចុច
+            {currentLanguage === "en"
+              ? "Answer questions using your voice or keyboard"
+              : "សូមឆ្លើយសំណួរដោយប្រើសំឡេងឬក្តារចុច"}
           </p>
+        </div>
+
+        {/* Language Switcher */}
+        <div className="flex justify-center mb-6">
+          <LanguageSwitcher
+            currentLanguage={currentLanguage}
+            onLanguageChange={handleLanguageChange}
+          />
         </div>
 
         {/* Progress */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-2">
             <span className="text-sm text-gray-600">
-              Question {currentQuestionIndex + 1} of {surveyQuestions.length}
+              {currentLanguage === "en" ? "Question" : "សំណួរ"}{" "}
+              {currentQuestionIndex + 1}{" "}
+              {currentLanguage === "en" ? "of" : "ក្នុងចំណោម"}{" "}
+              {surveyQuestions.length}
             </span>
             <span className="text-sm text-gray-600">
-              {Math.round(progress)}% Complete
+              {Math.round(progress)}%{" "}
+              {currentLanguage === "en" ? "Complete" : "បញ្ចប់"}
             </span>
           </div>
           <Progress value={progress} className="h-2" />
@@ -1034,7 +1095,14 @@ const Index = () => {
             className="flex items-center gap-2"
           >
             {isVoiceEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            Voice {isVoiceEnabled ? "On" : "Off"}
+            {currentLanguage === "en" ? "Voice" : "សំឡេង"}{" "}
+            {isVoiceEnabled
+              ? currentLanguage === "en"
+                ? "On"
+                : "បើក"
+              : currentLanguage === "en"
+              ? "Off"
+              : "បិទ"}
           </Button>
 
           <Button
@@ -1045,7 +1113,13 @@ const Index = () => {
             className="flex items-center gap-2"
           >
             <Volume2 size={16} />
-            {isSpeaking ? "Reading..." : "Read Question"}
+            {isSpeaking
+              ? currentLanguage === "en"
+                ? "Reading..."
+                : "កំពុងអាន..."
+              : currentLanguage === "en"
+              ? "Read Question"
+              : "អានសំណួរ"}
           </Button>
         </div>
 
@@ -1074,7 +1148,7 @@ const Index = () => {
             className="flex items-center gap-2"
           >
             <ArrowLeft size={16} />
-            Previous
+            {currentLanguage === "en" ? "Previous" : "មុន"}
           </Button>
 
           <Button
@@ -1082,7 +1156,13 @@ const Index = () => {
             disabled={!canProceed()}
             className="flex items-center gap-2"
           >
-            {isLastQuestion ? "Submit" : "Next"}
+            {isLastQuestion
+              ? currentLanguage === "en"
+                ? "Submit"
+                : "ដាក់ស្នើ"
+              : currentLanguage === "en"
+              ? "Next"
+              : "បន្ទាប់"}
             <ArrowRight size={16} />
           </Button>
         </div>

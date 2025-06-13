@@ -1,3 +1,5 @@
+import { Language } from "@/types/language";
+
 // Extend Window interface for TypeScript
 declare global {
   interface Window {
@@ -62,10 +64,18 @@ export class VoiceService {
   private isInitialized = false;
   private isListening = false;
   private stream: MediaStream | null = null;
+  private currentLanguage: Language = "en";
 
   constructor() {
     console.log("Initializing VoiceService...");
     this.synthesis = window.speechSynthesis;
+  }
+
+  public setLanguage(language: Language) {
+    this.currentLanguage = language;
+    if (this.recognition) {
+      this.recognition.lang = language === "km" ? "km-KH" : "en-US";
+    }
   }
 
   public async initialize(): Promise<void> {
@@ -114,7 +124,7 @@ export class VoiceService {
     this.recognition.continuous = false; // Changed to false to get complete phrases
     this.recognition.interimResults = true;
     this.recognition.maxAlternatives = 1; // We only need the best result
-    this.recognition.lang = "km-KH";
+    this.recognition.lang = this.currentLanguage === "km" ? "km-KH" : "en-US";
     console.log("Speech recognition configured");
   }
 
@@ -222,48 +232,58 @@ export class VoiceService {
     }
   }
 
-public async speak(text: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    try {
-      if (!this.synthesis) {
-        console.log("Speech synthesis not available - continuing without audio");
-        return resolve();
-      }
-
-      this.stopSpeaking();
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "km-KH"; // <== SET KHMER LANGUAGE HERE
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      utterance.volume = 1;
-      utterance.voice = speechSynthesis.getVoices().find(v => v.lang.startsWith("km"));
-
-
-      utterance.onend = () => {
-        console.log("Speech completed");
-        resolve();
-      };
-
-      utterance.onerror = (event) => {
-        if (event.error === "not-allowed") {
-          console.log("Speech synthesis blocked - continuing without audio");
-          resolve();
-          return;
+  public async speak(text: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!this.synthesis) {
+          console.log(
+            "Speech synthesis not available - continuing without audio"
+          );
+          return resolve();
         }
 
-        console.error("Speech error:", event.error);
+        this.stopSpeaking();
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = this.currentLanguage === "km" ? "km-KH" : "en-US";
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        utterance.volume = 1;
+
+        // Try to find a voice for the current language
+        const voices = speechSynthesis.getVoices();
+        const voice = voices.find((v) =>
+          this.currentLanguage === "km"
+            ? v.lang.startsWith("km")
+            : v.lang.startsWith("en")
+        );
+        if (voice) {
+          utterance.voice = voice;
+        }
+
+        utterance.onend = () => {
+          console.log("Speech completed");
+          resolve();
+        };
+
+        utterance.onerror = (event) => {
+          if (event.error === "not-allowed") {
+            console.log("Speech synthesis blocked - continuing without audio");
+            resolve();
+            return;
+          }
+
+          console.error("Speech error:", event.error);
+          resolve();
+        };
+
+        this.synthesis.speak(utterance);
+      } catch (error) {
+        console.log("Speech did not start - continuing without audio");
         resolve();
-      };
-
-      this.synthesis.speak(utterance);
-    } catch (error) {
-      console.log("Speech did not start - continuing without audio");
-      resolve();
-    }
-  });
-}
-
+      }
+    });
+  }
 
   stopSpeaking(): void {
     console.log("Stopping speech");
