@@ -1,4 +1,5 @@
 import { Language } from "@/types/language";
+import { AzureTTSService, AzureTTSConfig } from "./AzureTTSService";
 
 // Extend Window interface for TypeScript
 declare global {
@@ -61,14 +62,24 @@ declare var SpeechRecognition: {
 export class VoiceService {
   private recognition: SpeechRecognition | null = null;
   private synthesis: SpeechSynthesis;
+  private azureTTS: AzureTTSService;
   private isInitialized = false;
   private isListening = false;
   private stream: MediaStream | null = null;
   private currentLanguage: Language = "km";
+  private useAzureTTS: boolean = true; // Default to using Azure TTS
 
   constructor() {
     console.log("Initializing VoiceService...");
     this.synthesis = window.speechSynthesis;
+
+    // Initialize Azure TTS service
+    const azureConfig: AzureTTSConfig = {
+      subscriptionKey: import.meta.env.VITE_AZURE_TTS_KEY || "",
+      region: import.meta.env.VITE_AZURE_TTS_REGION || "centralindia",
+      voiceName: "km-KH-PisethNeural", // Default Khmer voice
+    };
+    this.azureTTS = new AzureTTSService(azureConfig);
   }
 
   public setLanguage(language: Language) {
@@ -76,6 +87,10 @@ export class VoiceService {
     if (this.recognition) {
       this.recognition.lang = language === "km" ? "km-KH" : "en-US";
     }
+  }
+
+  public setUseAzureTTS(useAzure: boolean) {
+    this.useAzureTTS = useAzure;
   }
 
   public async initialize(): Promise<void> {
@@ -104,7 +119,6 @@ export class VoiceService {
 
         if (window.speechSynthesis) {
           this.synthesis = window.speechSynthesis;
-
           // Load voices asynchronously (important for iOS Safari)
           await this.loadVoices();
         } else {
@@ -266,94 +280,44 @@ export class VoiceService {
   }
 
   public async speak(text: string): Promise<void> {
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       try {
+        console.log("[VoiceService] Starting speak with text:", text);
+        console.log("[VoiceService] Current language:", this.currentLanguage);
+
+        // Stop any currently playing audio
+        this.stopSpeaking();
+
+        // Use Azure TTS for Khmer language
+        if (this.currentLanguage === "km") {
+          try {
+            await this.azureTTS.speak(text, this.currentLanguage);
+            resolve();
+            return;
+          } catch (azureError) {
+            console.error("[VoiceService] Azure TTS failed:", azureError);
+            reject(azureError);
+            return;
+          }
+        }
+
+        // Browser synthesis only for English
         if (!this.synthesis) {
-          console.log(
-            "Speech synthesis not available - continuing without audio"
-          );
+          console.log("Speech synthesis not available");
           return resolve();
         }
 
-        this.stopSpeaking();
-
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = this.currentLanguage === "km" ? "km-KH" : "en-US";
+        utterance.lang = "en-US";
         utterance.rate = 1;
         utterance.pitch = 1;
         utterance.volume = 1;
 
-        // Enhanced voice selection logic
-        let voices = speechSynthesis.getVoices();
-
-        // If no voices available, try to reload them (common on iOS)
-        if (voices.length === 0) {
-          console.log("No voices available, attempting to reload...");
-          // Trigger voice loading
-          speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-          speechSynthesis.cancel();
-
-          // Wait a bit and try again
-          setTimeout(() => {
-            voices = speechSynthesis.getVoices();
-            console.log("Voices after reload attempt:", voices.length);
-          }, 100);
-        }
-
-        console.log(
-          "Available voices:",
-          voices.map((v) => `${v.name} (${v.lang})`)
-        );
-
-        let selectedVoice = null;
-
-        if (this.currentLanguage === "km") {
-          // Try to find Khmer voices in order of preference
-          selectedVoice =
-            voices.find((v) => v.lang === "km-KH") || // Exact match
-            voices.find((v) => v.lang === "km") || // Just km
-            voices.find((v) => v.lang.startsWith("km")) || // Starts with km
-            voices.find((v) => v.name.toLowerCase().includes("khmer")) || // Name contains khmer
-            voices.find((v) => v.name.toLowerCase().includes("cambodia")); // Name contains cambodia
-
-          if (!selectedVoice) {
-            console.log(
-              "No Khmer voice found, available voices:",
-              voices.map((v) => `${v.name} (${v.lang})`)
-            );
-            // Fallback to any available voice but keep Khmer language setting
-            selectedVoice =
-              voices.find((v) => v.lang.startsWith("en")) || voices[0];
-            if (selectedVoice) {
-              console.log(
-                "Using fallback voice:",
-                selectedVoice.name,
-                selectedVoice.lang
-              );
-            }
-          } else {
-            console.log(
-              "Using Khmer voice:",
-              selectedVoice.name,
-              selectedVoice.lang
-            );
-          }
-        } else {
-          // English voice selection
-          selectedVoice = voices.find((v) => v.lang.startsWith("en"));
-          if (selectedVoice) {
-            console.log(
-              "Using English voice:",
-              selectedVoice.name,
-              selectedVoice.lang
-            );
-          }
-        }
-
+        // Voice selection only for English
+        const voices = speechSynthesis.getVoices();
+        const selectedVoice = voices.find((v) => v.lang.startsWith("en"));
         if (selectedVoice) {
           utterance.voice = selectedVoice;
-        } else {
-          console.log("No suitable voice found, using default");
         }
 
         utterance.onend = () => {
@@ -363,19 +327,18 @@ export class VoiceService {
 
         utterance.onerror = (event) => {
           if (event.error === "not-allowed") {
-            console.log("Speech synthesis blocked - continuing without audio");
+            console.log("Speech synthesis blocked");
             resolve();
             return;
           }
-
           console.error("Speech error:", event.error);
           resolve();
         };
 
         this.synthesis.speak(utterance);
       } catch (error) {
-        console.log("Speech did not start - continuing without audio");
-        resolve();
+        console.error("Speech error:", error);
+        reject(error);
       }
     });
   }
@@ -385,6 +348,8 @@ export class VoiceService {
     if (this.synthesis) {
       this.synthesis.cancel();
     }
+    // Also stop Azure TTS
+    this.azureTTS.stopSpeaking();
   }
 
   cleanup(): void {
@@ -396,6 +361,9 @@ export class VoiceService {
       this.stream.getTracks().forEach((track) => track.stop());
       this.stream = null;
     }
+
+    // Cleanup Azure TTS
+    this.azureTTS.cleanup();
 
     this.isListening = false;
     console.log("Cleanup complete");
