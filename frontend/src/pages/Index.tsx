@@ -65,6 +65,7 @@ const Index = () => {
   const progress = ((currentQuestionIndex + 1) / surveyQuestions.length) * 100;
   const isLastQuestion = currentQuestionIndex === surveyQuestions.length - 1;
   const isFirstQuestion = currentQuestionIndex === 0;
+  const [voiceActivated, setVoiceActivated] = useState(false);
 
   // Save answers to localStorage whenever answers change
   useEffect(() => {
@@ -241,129 +242,135 @@ const Index = () => {
     return Math.floor((Date.now() - startTime) / 1000); // Convert to seconds
   };
 
-  const readQuestion = async (manual: boolean = false) => {
-    if (!isVoiceEnabled) return;
+const readQuestion = async (manual: boolean = false) => {
+  if (!isVoiceEnabled) return;
 
-    console.log(
-      "Reading question. navigationRef:",
-      navigationRef.current,
-      "manual:",
-      manual
-    );
+  console.log("Reading question. navigationRef:", navigationRef.current, "manual:", manual);
 
-    // Only check navigation flag for automatic calls, not manual ones
-    if (!manual && navigationRef.current) {
-      console.log("Navigation flag is true before reading, skipping...");
+  try {
+    // ✅ Check and request mic permission
+    const permission = await navigator.permissions.query({
+      name: "microphone" as PermissionName,
+    });
+
+    if (permission.state === "denied") {
+      toast({
+        title: "Microphone Access Blocked",
+        description: "Please allow mic access from the browser's lock icon and refresh.",
+        variant: "destructive",
+      });
       return;
     }
 
-    // Clear any existing timeouts before starting
-    if (autoRecordTimeoutRef.current) {
-      clearTimeout(autoRecordTimeoutRef.current);
-      autoRecordTimeoutRef.current = null;
-    }
-    if (autoRecordTimeoutId) {
-      clearTimeout(autoRecordTimeoutId);
-      setAutoRecordTimeoutId(null);
-    }
+    await navigator.mediaDevices.getUserMedia({ audio: true });
+    setVoiceActivated(true);
+  } catch (err) {
+    console.error("Mic permission failed:", err);
+    toast({
+      title: "Microphone Access Denied",
+      description: "Please enable microphone access in browser settings.",
+      variant: "destructive",
+    });
+    return;
+  }
 
-    setIsSpeaking(true);
-    setIsWaitingToRecord(false);
+  if (!manual && navigationRef.current) {
+    console.log("Navigation flag is true before reading, skipping...");
+    return;
+  }
 
-    try {
-      let textToRead = currentQuestion.question;
+  // Clear any existing timeouts before speaking
+  if (autoRecordTimeoutRef.current) {
+    clearTimeout(autoRecordTimeoutRef.current);
+    autoRecordTimeoutRef.current = null;
+  }
+  if (autoRecordTimeoutId) {
+    clearTimeout(autoRecordTimeoutId);
+    setAutoRecordTimeoutId(null);
+  }
 
-      if (
-        (currentQuestion.type === "single-select" ||
-          currentQuestion.type === "multi-select") &&
-        currentQuestion.options
-      ) {
-        if (currentLanguage === "en") {
-          textToRead += ". Your options are: ";
-          textToRead += currentQuestion.options
-            .map((opt) => opt.name)
-            .join(", ");
+  setIsSpeaking(true);
+  setIsWaitingToRecord(false);
 
-          if (currentQuestion.type === "multi-select") {
-            textToRead +=
-              '. You can select multiple options by saying them separated by "and".';
-          }
-        } else {
-          textToRead += ". ជម្រើសរបស់អ្នកគឺ: ";
-          textToRead += currentQuestion.options
-            .map((opt) => opt.name)
-            .join(", ");
+  try {
+    let textToRead = currentQuestion.question;
 
-          if (currentQuestion.type === "multi-select") {
-            textToRead +=
-              '. អ្នកអាចជ្រើសរើសជម្រើសច្រើនដោយនិយាយពួកវាដោយបំបែកដោយ "និង".';
-          }
+    if (
+      (currentQuestion.type === "single-select" || currentQuestion.type === "multi-select") &&
+      currentQuestion.options
+    ) {
+      if (currentLanguage === "en") {
+        textToRead += ". Your options are: " + currentQuestion.options.map((opt) => opt.name).join(", ");
+        if (currentQuestion.type === "multi-select") {
+          textToRead += '. You can select multiple options by saying them separated by "and".';
+        }
+      } else {
+        textToRead += ". ជម្រើសរបស់អ្នកគឺ: " + currentQuestion.options.map((opt) => opt.name).join(", ");
+        if (currentQuestion.type === "multi-select") {
+          textToRead += '. អ្នកអាចជ្រើសរើសជម្រើសច្រើនដោយនិយាយពួកវាដោយបំបែកដោយ "និង".';
         }
       }
+    }
 
-      if (currentQuestion.type === "rating") {
-        if (currentLanguage === "en") {
-          textToRead +=
-            ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely.";
-        } else {
-          textToRead +=
-            ". សូមវាយតម្លៃពី 1 ដល់ 10 ដែល 1 គឺមិនទំនងនិង 10 គឺទំនងខ្លាំង.";
-        }
-      }
+    if (currentQuestion.type === "rating") {
+      textToRead +=
+        currentLanguage === "en"
+          ? ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely."
+          : ". សូមវាយតម្លៃពី 1 ដល់ 10 ដែល 1 គឺមិនទំនងនិង 10 គឺទំនងខ្លាំង.";
+    }
 
-      await voiceService.speak(textToRead);
+    // 🔊 Speak the question
+    await voiceService.speak(textToRead);
 
-      // Only check navigation ref for automatic calls, not manual ones
-      if (!manual && navigationRef.current) {
-        console.log("Navigation occurred during speech, skipping auto-record");
-        setIsWaitingToRecord(false);
-        return;
-      }
+    // After speaking, auto-record unless user navigated away
+    if (!manual && navigationRef.current) {
+      console.log("Navigation occurred during speech, skipping auto-record");
+      setIsWaitingToRecord(false);
+      return;
+    }
 
-      console.log("Finished speaking. navigationRef:", navigationRef.current);
+    console.log("Finished speaking. navigationRef:", navigationRef.current);
 
-      // Always auto-record after reading, regardless of whether answer exists
-      console.log("Setting up auto-record");
-      setIsWaitingToRecord(true);
-
-      const toastMessage =
+    toast({
+      title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
+      description:
         currentLanguage === "en"
           ? "Recording will start in a moment..."
-          : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
+          : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...",
+      duration: 1000,
+    });
 
-      toast({
-        title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
-        description: toastMessage,
-        duration: 1000,
-      });
+    setIsWaitingToRecord(true);
 
-      const timeoutId = setTimeout(() => {
-        console.log(
-          "Auto-record timeout triggered. navigationRef:",
-          navigationRef.current
-        );
+    const timeoutId = setTimeout(() => {
+      console.log("Auto-record timeout triggered. navigationRef:", navigationRef.current);
+      if (isVoiceEnabled) {
+        console.log("Starting auto-record");
+        setIsWaitingToRecord(false);
+        requestAnimationFrame(() => {
+          // ✅ Always reset mic state
+          startVoiceRecording().catch((err) => {
+            console.error("Auto-record error:", err);
+            setIsListening(false);
+            setIsWaitingToRecord(false);
+          });
+        });
+      } else {
+        console.log("Auto-record cancelled. Voice disabled");
+        setIsWaitingToRecord(false);
+      }
+    }, 1500);
 
-        // Check: voice is enabled
-        if (isVoiceEnabled) {
-          console.log("Starting auto-record");
-          setIsWaitingToRecord(false);
-          startVoiceRecording();
-        } else {
-          console.log("Auto-record cancelled. Voice disabled");
-          setIsWaitingToRecord(false);
-        }
-      }, 1500);
+    autoRecordTimeoutRef.current = timeoutId;
+    setAutoRecordTimeoutId(timeoutId);
+  } catch (error) {
+    console.error("Speech error:", error);
+    setIsWaitingToRecord(false);
+  } finally {
+    setIsSpeaking(false);
+  }
+};
 
-      // Store timeout ID in both state and ref
-      autoRecordTimeoutRef.current = timeoutId;
-      setAutoRecordTimeoutId(timeoutId);
-    } catch (error) {
-      console.error("Speech error:", error);
-      setIsWaitingToRecord(false);
-    } finally {
-      setIsSpeaking(false);
-    }
-  };
 
   // Function to match voice input to multiple choice options
   const matchVoiceToOption = (voiceInput: string): string => {
@@ -1118,8 +1125,8 @@ const Index = () => {
                 ? "On"
                 : "បើក"
               : currentLanguage === "en"
-              ? "Off"
-              : "បិទ"}
+                ? "Off"
+                : "បិទ"}
           </Button>
 
           <Button
@@ -1135,11 +1142,10 @@ const Index = () => {
                 ? "Reading..."
                 : "កំពុងអាន..."
               : currentLanguage === "en"
-              ? "Read Question"
-              : "អានសំណួរ"}
+                ? "Read Question"
+                : "អានសំណួរ"}
           </Button>
         </div>
-
         {/* Question Card */}
         <Card className="p-6 mb-8 shadow-lg">
           <SurveyQuestion
@@ -1179,8 +1185,8 @@ const Index = () => {
                 ? "Submit"
                 : "ដាក់ស្នើ"
               : currentLanguage === "en"
-              ? "Next"
-              : "បន្ទាប់"}
+                ? "Next"
+                : "បន្ទាប់"}
             <ArrowRight size={16} />
           </Button>
         </div>
