@@ -30,8 +30,8 @@ export async function recognizeKhmerSpeech(
       console.log("Speech recognizer created, starting recognition...");
 
       recognizer.recognizeOnceAsync((result) => {
-        console.log("Azure SDK recognition result received:", result);
-        console.log("Result reason:", result.reason);
+        // console.log("Azure SDK recognition result received:", result);
+        // console.log("Result reason:", result.reason);
 
         if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
           console.log("✅ Azure SDK successfully recognized:", result.text);
