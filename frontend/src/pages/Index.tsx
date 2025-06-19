@@ -75,34 +75,116 @@ const Index = () => {
   // Initialize voice service on component mount
   useEffect(() => {
     const initializeVoice = async () => {
-      try {
-        await voiceService.initialize();
-        voiceService.setLanguage(currentLanguage);
-        const isSupported = voiceService.isSupported();
-        setIsVoiceSupported(isSupported);
-        setIsVoiceEnabled(isSupported);
+      console.log("[DEBUG] === VOICE SERVICE INITIALIZATION ===");
+      console.log("[DEBUG] Browser info:", {
+        userAgent: navigator.userAgent,
+        isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+        isSafari:
+          /Safari/.test(navigator.userAgent) &&
+          !/Chrome/.test(navigator.userAgent),
+        isChrome: /Chrome/.test(navigator.userAgent),
+        isMobile: /Mobile|Android|iPhone|iPad/.test(navigator.userAgent),
+      });
 
-        if (!isSupported) {
+      // iOS Safari specific handling
+      const isIOSSafari =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+        /Safari/.test(navigator.userAgent) &&
+        !/Chrome/.test(navigator.userAgent);
+
+      if (isIOSSafari) {
+        console.log("[DEBUG] iOS Safari detected, applying special handling");
+        // For iOS Safari, we'll use browser synthesis for English and Azure for Khmer
+        // but we need to handle the limitations carefully
+      }
+
+      try {
+        console.log("[DEBUG] Calling voiceService.initialize...");
+        await voiceService.initialize();
+        console.log("[DEBUG] voiceService.initialize completed");
+
+        console.log("[DEBUG] Setting language to:", currentLanguage);
+        voiceService.setLanguage(currentLanguage);
+
+        console.log("[DEBUG] Checking if voice service is supported...");
+        const isSupported = voiceService.isSupported();
+        console.log("[DEBUG] Voice service supported:", isSupported);
+
+        // For iOS Safari, we might need to adjust support detection
+        let finalIsSupported = isSupported;
+        if (isIOSSafari) {
+          console.log("[DEBUG] iOS Safari: Checking browser synthesis support");
+          if (window.speechSynthesis) {
+            const voices = window.speechSynthesis.getVoices();
+            const hasEnglishVoices = voices.some((v) =>
+              v.lang.startsWith("en")
+            );
+            console.log(
+              "[DEBUG] iOS Safari: Has English voices:",
+              hasEnglishVoices
+            );
+
+            // For iOS Safari, we consider it supported if we have browser synthesis
+            // even if Azure TTS might have issues
+            if (hasEnglishVoices || currentLanguage === "km") {
+              finalIsSupported = true;
+              console.log("[DEBUG] iOS Safari: Marking as supported");
+            }
+          }
+        }
+
+        setIsVoiceSupported(finalIsSupported);
+        setIsVoiceEnabled(finalIsSupported);
+
+        if (!finalIsSupported) {
+          console.log("[DEBUG] Voice service not supported, showing toast");
+          const message = isIOSSafari
+            ? "Voice features may have limited functionality on iOS Safari. Please use Chrome or Firefox for better support."
+            : "Please ensure you've granted microphone permissions and are using a supported browser (Chrome or Safari).";
+
           toast({
-            title: "Voice Features Not Available",
-            description:
-              "Please ensure you've granted microphone permissions and are using a supported browser (Chrome or Safari).",
+            title: "Voice Features Limited",
+            description: message,
             variant: "default",
             duration: 6000,
           });
+        } else {
+          console.log("[DEBUG] Voice service supported, features enabled");
+          if (isIOSSafari) {
+            toast({
+              title: "Voice Features Available",
+              description:
+                "Voice features are enabled. For best experience, use Chrome or Firefox on iOS.",
+              variant: "default",
+              duration: 4000,
+            });
+          }
         }
+
+        console.log("[DEBUG] Setting isInitialized to true");
         setIsInitialized(true);
       } catch (error) {
-        console.error("Error initializing voice service:", error);
+        console.error("[DEBUG] Error initializing voice service:", error);
+        console.log(
+          "[DEBUG] Error type:",
+          error instanceof Error ? "Error" : "Other"
+        );
+        if (error instanceof Error) {
+          console.log("[DEBUG] Error name:", error.name);
+          console.log("[DEBUG] Error message:", error.message);
+          console.log("[DEBUG] Error stack:", error.stack);
+        }
         setIsVoiceSupported(false);
         setIsVoiceEnabled(false);
         setIsInitialized(true);
       }
+      console.log("[DEBUG] === VOICE SERVICE INITIALIZATION END ===");
     };
 
     initializeVoice();
 
     return () => {
+      console.log("[DEBUG] Cleaning up voice service...");
       voiceService.stopListening();
       voiceService.stopSpeaking();
       voiceService.reset();
@@ -118,20 +200,27 @@ const Index = () => {
 
   // Handle question changes
   useEffect(() => {
+    console.log("[DEBUG] === QUESTION CHANGE EFFECT ===");
+    console.log("[DEBUG] Current question index:", currentQuestionIndex);
+    console.log("[DEBUG] Is initialized:", isInitialized);
+    console.log("[DEBUG] Voice enabled:", isVoiceEnabled);
+    console.log("[DEBUG] Voice supported:", isVoiceSupported);
+    console.log("[DEBUG] Current language:", currentLanguage);
+
     // Only proceed if voice service is initialized
     if (!isInitialized) {
-      console.log("Waiting for voice service initialization...");
+      console.log("[DEBUG] Voice service not initialized, waiting...");
       return;
     }
 
     // Reset navigation flag when question changes
-    console.log("Question changed to:", currentQuestionIndex);
+    console.log("[DEBUG] Question changed to:", currentQuestionIndex);
     let isMounted = true;
 
     const setupQuestion = async () => {
       try {
         // Stop all voice activities first
-        console.log("Stopping all voice activities...");
+        console.log("[DEBUG] Stopping all voice activities...");
         voiceService.stopListening();
         voiceService.stopSpeaking();
         voiceService.reset();
@@ -141,12 +230,12 @@ const Index = () => {
 
         // Clear any existing timeouts first
         if (autoRecordTimeoutRef.current) {
-          console.log("Clearing existing timeout from ref");
+          console.log("[DEBUG] Clearing existing timeout from ref");
           clearTimeout(autoRecordTimeoutRef.current);
           autoRecordTimeoutRef.current = null;
         }
         if (autoRecordTimeoutId) {
-          console.log("Clearing existing timeout from state");
+          console.log("[DEBUG] Clearing existing timeout from state");
           clearTimeout(autoRecordTimeoutId);
           setAutoRecordTimeoutId(null);
         }
@@ -155,32 +244,50 @@ const Index = () => {
         await new Promise((resolve) => setTimeout(resolve, 250));
 
         // Only proceed if still mounted
-        if (!isMounted) return;
+        if (!isMounted) {
+          console.log("[DEBUG] Component unmounted, stopping setup");
+          return;
+        }
 
         // Reset navigation state
         navigationRef.current = false;
         setHasNavigated(false);
 
         // Only proceed if still mounted and voice is supported
-        if (!isMounted || !isVoiceSupported) return;
+        if (!isMounted || !isVoiceSupported) {
+          console.log("[DEBUG] Not mounted or voice not supported, stopping");
+          return;
+        }
 
         if (isVoiceEnabled && currentQuestion) {
           console.log(
-            "Starting to read question:",
-            currentQuestionIndex,
-            "navigationRef:",
-            navigationRef.current
+            "[DEBUG] Starting to read question:",
+            currentQuestionIndex
           );
+          console.log("[DEBUG] Navigation ref:", navigationRef.current);
           await readQuestion();
+        } else {
+          console.log("[DEBUG] Voice not enabled or no current question");
+          console.log("[DEBUG] isVoiceEnabled:", isVoiceEnabled);
+          console.log("[DEBUG] currentQuestion:", currentQuestion);
         }
       } catch (error) {
-        console.error("Error in setupQuestion:", error);
+        console.error("[DEBUG] Error in setupQuestion:", error);
+        console.log(
+          "[DEBUG] Error type:",
+          error instanceof Error ? "Error" : "Other"
+        );
+        if (error instanceof Error) {
+          console.log("[DEBUG] Error name:", error.name);
+          console.log("[DEBUG] Error message:", error.message);
+        }
       }
     };
 
     setupQuestion();
 
     return () => {
+      console.log("[DEBUG] Cleanup for question change effect");
       isMounted = false;
       // Clear timeouts in cleanup
       if (autoRecordTimeoutRef.current) {
@@ -242,94 +349,358 @@ const Index = () => {
     return Math.floor((Date.now() - startTime) / 1000); // Convert to seconds
   };
 
-const readQuestion = async (manual: boolean = false) => {
-  if (!isVoiceEnabled) return;
+  const readQuestion = async (manual: boolean = false) => {
+    if (!isVoiceEnabled) {
+      console.log("[DEBUG] Voice not enabled, returning early");
+      return;
+    }
 
-  console.log("Reading question. navigationRef:", navigationRef.current, "manual:", manual);
-
-  try {
-    // ✅ Check and request mic permission
-    const permission = await navigator.permissions.query({
-      name: "microphone" as PermissionName,
+    console.log("[DEBUG] === READ QUESTION START ===");
+    console.log("[DEBUG] Manual call:", manual);
+    console.log("[DEBUG] Current language:", currentLanguage);
+    console.log("[DEBUG] Navigation ref:", navigationRef.current);
+    console.log("[DEBUG] Browser info:", {
+      userAgent: navigator.userAgent,
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+      isSafari:
+        /Safari/.test(navigator.userAgent) &&
+        !/Chrome/.test(navigator.userAgent),
+      isChrome: /Chrome/.test(navigator.userAgent),
+      isMobile: /Mobile|Android|iPhone|iPad/.test(navigator.userAgent),
     });
 
-    if (permission.state === "denied") {
+    // iOS Safari specific handling
+    const isIOSSafari =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+      /Safari/.test(navigator.userAgent) &&
+      !/Chrome/.test(navigator.userAgent);
+
+    try {
+      // ✅ Check and request mic permission
+      console.log("[DEBUG] Checking microphone permissions...");
+      const permission = await navigator.permissions.query({
+        name: "microphone" as PermissionName,
+      });
+      console.log("[DEBUG] Permission state:", permission.state);
+
+      if (permission.state === "denied") {
+        console.log("[DEBUG] Permission denied, showing toast");
+        toast({
+          title: "Microphone Access Blocked",
+          description:
+            "Please allow mic access from the browser's lock icon and refresh.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("[DEBUG] Requesting getUserMedia...");
+      await navigator.mediaDevices.getUserMedia({ audio: true });
+      console.log("[DEBUG] getUserMedia successful");
+      setVoiceActivated(true);
+    } catch (err) {
+      console.error("[DEBUG] Mic permission failed:", err);
+      console.log(
+        "[DEBUG] Error type:",
+        err instanceof DOMException ? "DOMException" : "Other"
+      );
+      if (err instanceof DOMException) {
+        console.log("[DEBUG] DOMException name:", err.name);
+        console.log("[DEBUG] DOMException message:", err.message);
+      }
       toast({
-        title: "Microphone Access Blocked",
-        description: "Please allow mic access from the browser's lock icon and refresh.",
+        title: "Microphone Access Denied",
+        description: "Please enable microphone access in browser settings.",
         variant: "destructive",
       });
       return;
     }
 
-    await navigator.mediaDevices.getUserMedia({ audio: true });
-    setVoiceActivated(true);
-  } catch (err) {
-    console.error("Mic permission failed:", err);
-    toast({
-      title: "Microphone Access Denied",
-      description: "Please enable microphone access in browser settings.",
-      variant: "destructive",
-    });
-    return;
-  }
+    if (!manual && navigationRef.current) {
+      console.log("[DEBUG] Navigation flag is true, skipping...");
+      return;
+    }
 
-  if (!manual && navigationRef.current) {
-    console.log("Navigation flag is true before reading, skipping...");
-    return;
-  }
+    // Clear any existing timeouts before speaking
+    if (autoRecordTimeoutRef.current) {
+      console.log("[DEBUG] Clearing existing timeout from ref");
+      clearTimeout(autoRecordTimeoutRef.current);
+      autoRecordTimeoutRef.current = null;
+    }
+    if (autoRecordTimeoutId) {
+      console.log("[DEBUG] Clearing existing timeout from state");
+      clearTimeout(autoRecordTimeoutId);
+      setAutoRecordTimeoutId(null);
+    }
 
-  // Clear any existing timeouts before speaking
-  if (autoRecordTimeoutRef.current) {
-    clearTimeout(autoRecordTimeoutRef.current);
-    autoRecordTimeoutRef.current = null;
-  }
-  if (autoRecordTimeoutId) {
-    clearTimeout(autoRecordTimeoutId);
-    setAutoRecordTimeoutId(null);
-  }
+    setIsSpeaking(true);
+    setIsWaitingToRecord(false);
 
-  setIsSpeaking(true);
-  setIsWaitingToRecord(false);
+    try {
+      let textToRead = currentQuestion.question;
+      console.log("[DEBUG] Original question text:", textToRead);
 
-  try {
-    let textToRead = currentQuestion.question;
-
-    if (
-      (currentQuestion.type === "single-select" || currentQuestion.type === "multi-select") &&
-      currentQuestion.options
-    ) {
-      if (currentLanguage === "en") {
-        textToRead += ". Your options are: " + currentQuestion.options.map((opt) => opt.name).join(", ");
-        if (currentQuestion.type === "multi-select") {
-          textToRead += '. You can select multiple options by saying them separated by "and".';
-        }
-      } else {
-        textToRead += ". ជម្រើសរបស់អ្នកគឺ: " + currentQuestion.options.map((opt) => opt.name).join(", ");
-        if (currentQuestion.type === "multi-select") {
-          textToRead += '. អ្នកអាចជ្រើសរើសជម្រើសច្រើនដោយនិយាយពួកវាដោយបំបែកដោយ "និង".';
+      if (
+        (currentQuestion.type === "single-select" ||
+          currentQuestion.type === "multi-select") &&
+        currentQuestion.options
+      ) {
+        if (currentLanguage === "en") {
+          textToRead +=
+            ". Your options are: " +
+            currentQuestion.options.map((opt) => opt.name).join(", ");
+          if (currentQuestion.type === "multi-select") {
+            textToRead +=
+              '. You can select multiple options by saying them separated by "and".';
+          }
+        } else {
+          textToRead +=
+            ". ជម្រើសរបស់អ្នកគឺ: " +
+            currentQuestion.options.map((opt) => opt.name).join(", ");
+          if (currentQuestion.type === "multi-select") {
+            textToRead +=
+              '. អ្នកអាចជ្រើសរើសជម្រើសច្រើនដោយនិយាយពួកវាដោយបំបែកដោយ "និង".';
+          }
         }
       }
-    }
 
-    if (currentQuestion.type === "rating") {
-      textToRead +=
-        currentLanguage === "en"
-          ? ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely."
-          : ". សូមវាយតម្លៃពី 1 ដល់ 10 ដែល 1 គឺមិនទំនងនិង 10 គឺទំនងខ្លាំង.";
-    }
+      if (currentQuestion.type === "rating") {
+        textToRead +=
+          currentLanguage === "en"
+            ? ". Please rate from 1 to 10, where 1 is not likely and 10 is very likely."
+            : ". សូមវាយតម្លៃពី 1 ដល់ 10 ដែល 1 គឺមិនទំនងនិង 10 គឺទំនងខ្លាំង.";
+      }
 
-    // 🔊 Speak the question
-    await voiceService.speak(textToRead);
+      console.log("[DEBUG] Final text to read:", textToRead);
+      console.log("[DEBUG] Calling voiceService.speak...");
+
+      // iOS Safari: Use browser synthesis for English, Azure for Khmer
+      if (isIOSSafari && currentLanguage === "en") {
+        console.log(
+          "[DEBUG] iOS Safari detected, using browser synthesis for English"
+        );
+        // For iOS Safari English, use browser synthesis instead of Azure
+        if (window.speechSynthesis) {
+          // iOS Safari requires user interaction for audio playback
+          // We'll try browser synthesis first, then fall back to Azure if needed
+          const tryBrowserSynthesis = () => {
+            // Cancel any existing speech first
+            window.speechSynthesis.cancel();
+
+            const utterance = new SpeechSynthesisUtterance(textToRead);
+            utterance.lang = "en-US";
+            utterance.rate = 0.9; // Slightly slower for better clarity
+            utterance.pitch = 1;
+            utterance.volume = 1;
+
+            // Get available voices
+            const voices = speechSynthesis.getVoices();
+            const englishVoice =
+              voices.find((v) => v.lang.startsWith("en") && v.default) ||
+              voices.find((v) => v.lang.startsWith("en")) ||
+              null;
+
+            if (englishVoice) {
+              utterance.voice = englishVoice;
+              console.log("[DEBUG] Using English voice:", englishVoice.name);
+            }
+
+            let speechStarted = false;
+            let speechCompleted = false;
+
+            utterance.onstart = () => {
+              console.log("[DEBUG] Browser synthesis started");
+              speechStarted = true;
+            };
+
+            utterance.onend = () => {
+              console.log("[DEBUG] Browser synthesis completed");
+              speechCompleted = true;
+              // Continue with auto-record after browser synthesis
+              handlePostSpeech();
+            };
+
+            utterance.onerror = (event) => {
+              console.error("[DEBUG] Browser synthesis error:", event.error);
+              console.log("[DEBUG] Error details:", {
+                error: event.error,
+                elapsedTime: event.elapsedTime,
+                charIndex: event.charIndex,
+                name: event.name,
+              });
+
+              // Fall back to Azure TTS if browser synthesis fails
+              console.log("[DEBUG] Falling back to Azure TTS");
+              voiceService
+                .speak(textToRead)
+                .then(() => {
+                  handlePostSpeech();
+                })
+                .catch((error) => {
+                  console.error(
+                    "[DEBUG] Azure TTS fallback also failed:",
+                    error
+                  );
+                  handlePostSpeech();
+                });
+            };
+
+            console.log("[DEBUG] Starting browser synthesis...");
+            window.speechSynthesis.speak(utterance);
+
+            // For iOS Safari, we need to ensure the speech actually starts
+            // Check multiple times with increasing delays
+            const checkSpeechStatus = (attempts = 0) => {
+              setTimeout(() => {
+                if (speechStarted) {
+                  console.log("[DEBUG] Browser synthesis confirmed speaking");
+                  return;
+                }
+
+                if (speechCompleted) {
+                  console.log("[DEBUG] Speech already completed");
+                  return;
+                }
+
+                if (window.speechSynthesis.speaking) {
+                  console.log(
+                    "[DEBUG] Browser synthesis is speaking (detected via speaking property)"
+                  );
+                  speechStarted = true;
+                  return;
+                }
+
+                if (attempts < 3) {
+                  console.log(
+                    `[DEBUG] Browser synthesis didn't start, retrying... (attempt ${
+                      attempts + 1
+                    })`
+                  );
+                  window.speechSynthesis.speak(utterance);
+                  checkSpeechStatus(attempts + 1);
+                } else {
+                  console.log(
+                    "[DEBUG] Browser synthesis failed after multiple attempts, falling back to Azure TTS"
+                  );
+                  // Fall back to Azure TTS
+                  voiceService
+                    .speak(textToRead)
+                    .then(() => {
+                      handlePostSpeech();
+                    })
+                    .catch((error) => {
+                      console.error(
+                        "[DEBUG] Azure TTS fallback also failed:",
+                        error
+                      );
+                      handlePostSpeech();
+                    });
+                }
+              }, 200 * (attempts + 1)); // Increasing delay: 200ms, 400ms, 600ms
+            };
+
+            checkSpeechStatus();
+          };
+
+          // For manual calls on iOS Safari, try browser synthesis
+          // For automatic calls, try Azure TTS first (which might work better)
+          if (manual) {
+            console.log(
+              "[DEBUG] Manual call on iOS Safari, using browser synthesis"
+            );
+            tryBrowserSynthesis();
+            return; // Exit early, handlePostSpeech will be called by onend/onerror
+          } else {
+            console.log(
+              "[DEBUG] Automatic call on iOS Safari, trying Azure TTS first"
+            );
+            // Try Azure TTS first for automatic calls, fall back to browser synthesis
+            voiceService
+              .speak(textToRead)
+              .then(() => {
+                console.log("[DEBUG] Azure TTS succeeded on iOS Safari");
+                handlePostSpeech();
+              })
+              .catch((error) => {
+                console.log(
+                  "[DEBUG] Azure TTS failed on iOS Safari, falling back to browser synthesis"
+                );
+                tryBrowserSynthesis();
+              });
+            return; // Exit early, handlePostSpeech will be called by onend/onerror
+          }
+        } else {
+          console.log(
+            "[DEBUG] Browser synthesis not available, falling back to Azure TTS"
+          );
+        }
+      }
+
+      // For iOS Safari, if we get here, try a different approach
+      if (isIOSSafari && currentLanguage === "en") {
+        console.log(
+          "[DEBUG] iOS Safari fallback: trying Azure TTS with user interaction"
+        );
+        // Try Azure TTS as a fallback for iOS Safari
+        try {
+          await voiceService.speak(textToRead);
+          console.log("[DEBUG] Azure TTS succeeded on iOS Safari fallback");
+          handlePostSpeech();
+          return;
+        } catch (error) {
+          console.error(
+            "[DEBUG] Azure TTS failed on iOS Safari fallback:",
+            error
+          );
+          // If all else fails, just continue without speech
+          console.log(
+            "[DEBUG] All speech methods failed on iOS Safari, continuing without speech"
+          );
+          handlePostSpeech();
+          return;
+        }
+      }
+
+      // 🔊 Speak the question (Azure TTS for Khmer or fallback)
+      await voiceService.speak(textToRead);
+      console.log("[DEBUG] voiceService.speak completed");
+      handlePostSpeech();
+    } catch (error) {
+      console.error("[DEBUG] Speech error:", error);
+      console.log(
+        "[DEBUG] Error type:",
+        error instanceof Error ? "Error" : "Other"
+      );
+      if (error instanceof Error) {
+        console.log("[DEBUG] Error name:", error.name);
+        console.log("[DEBUG] Error message:", error.message);
+        console.log("[DEBUG] Error stack:", error.stack);
+      }
+      setIsWaitingToRecord(false);
+    } finally {
+      console.log("[DEBUG] Setting isSpeaking to false");
+      setIsSpeaking(false);
+    }
+    console.log("[DEBUG] === READ QUESTION END ===");
+  };
+
+  // Helper function to handle post-speech logic
+  const handlePostSpeech = () => {
+    console.log("[DEBUG] === HANDLE POST SPEECH ===");
 
     // After speaking, auto-record unless user navigated away
-    if (!manual && navigationRef.current) {
-      console.log("Navigation occurred during speech, skipping auto-record");
+    if (navigationRef.current) {
+      console.log(
+        "[DEBUG] Navigation occurred during speech, skipping auto-record"
+      );
       setIsWaitingToRecord(false);
       return;
     }
 
-    console.log("Finished speaking. navigationRef:", navigationRef.current);
+    console.log(
+      "[DEBUG] Finished speaking. navigationRef:",
+      navigationRef.current
+    );
 
     toast({
       title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
@@ -343,34 +714,32 @@ const readQuestion = async (manual: boolean = false) => {
     setIsWaitingToRecord(true);
 
     const timeoutId = setTimeout(() => {
-      console.log("Auto-record timeout triggered. navigationRef:", navigationRef.current);
+      console.log(
+        "[DEBUG] Auto-record timeout triggered. navigationRef:",
+        navigationRef.current
+      );
       if (isVoiceEnabled) {
-        console.log("Starting auto-record");
+        console.log("[DEBUG] Starting auto-record");
         setIsWaitingToRecord(false);
         requestAnimationFrame(() => {
           // ✅ Always reset mic state
+          console.log("[DEBUG] Calling startVoiceRecording from auto-record");
           startVoiceRecording().catch((err) => {
-            console.error("Auto-record error:", err);
+            console.error("[DEBUG] Auto-record error:", err);
             setIsListening(false);
             setIsWaitingToRecord(false);
           });
         });
       } else {
-        console.log("Auto-record cancelled. Voice disabled");
+        console.log("[DEBUG] Auto-record cancelled. Voice disabled");
         setIsWaitingToRecord(false);
       }
     }, 1500);
 
     autoRecordTimeoutRef.current = timeoutId;
     setAutoRecordTimeoutId(timeoutId);
-  } catch (error) {
-    console.error("Speech error:", error);
-    setIsWaitingToRecord(false);
-  } finally {
-    setIsSpeaking(false);
-  }
-};
-
+    console.log("[DEBUG] === HANDLE POST SPEECH END ===");
+  };
 
   // Function to match voice input to multiple choice options
   const matchVoiceToOption = (voiceInput: string): string => {
@@ -513,7 +882,22 @@ const readQuestion = async (manual: boolean = false) => {
   };
 
   const startVoiceRecording = async () => {
+    console.log("[DEBUG] === START VOICE RECORDING ===");
+    console.log("[DEBUG] Voice enabled:", isVoiceEnabled);
+    console.log("[DEBUG] Voice supported:", isVoiceSupported);
+    console.log("[DEBUG] Current language:", currentLanguage);
+    console.log("[DEBUG] Browser info:", {
+      userAgent: navigator.userAgent,
+      isIOS: /iPad|iPhone|iPod/.test(navigator.userAgent),
+      isSafari:
+        /Safari/.test(navigator.userAgent) &&
+        !/Chrome/.test(navigator.userAgent),
+      isChrome: /Chrome/.test(navigator.userAgent),
+      isMobile: /Mobile|Android|iPhone|iPad/.test(navigator.userAgent),
+    });
+
     if (!isVoiceEnabled) {
+      console.log("[DEBUG] Voice not enabled, showing error toast");
       const errorMessage =
         currentLanguage === "en"
           ? "Please enable voice features to use voice recording."
@@ -531,6 +915,7 @@ const readQuestion = async (manual: boolean = false) => {
     }
 
     if (!isVoiceSupported) {
+      console.log("[DEBUG] Voice not supported, showing error toast");
       const errorMessage =
         currentLanguage === "en"
           ? "Please ensure you've granted microphone permissions and are using a supported browser."
@@ -549,14 +934,24 @@ const readQuestion = async (manual: boolean = false) => {
 
     // Don't start recording if already listening, speaking, or waiting to record
     if (isListening || isSpeaking || isWaitingToRecord) {
+      console.log("[DEBUG] Already in voice state, returning early");
+      console.log("[DEBUG] isListening:", isListening);
+      console.log("[DEBUG] isSpeaking:", isSpeaking);
+      console.log("[DEBUG] isWaitingToRecord:", isWaitingToRecord);
       return;
     }
 
     try {
+      console.log("[DEBUG] Setting isListening to true");
       setIsListening(true);
+      console.log("[DEBUG] Calling voiceService.startListening...");
       const result = await voiceService.startListening();
+      console.log("[DEBUG] voiceService.startListening result:", result);
+
       if (result) {
+        console.log("[DEBUG] Got voice result, processing...");
         const matchedAnswer = matchVoiceToOption(result);
+        console.log("[DEBUG] Matched answer:", matchedAnswer);
         handleAnswerChange(matchedAnswer);
 
         // Check if a valid option was selected
@@ -581,6 +976,8 @@ const readQuestion = async (manual: boolean = false) => {
         } else if (currentQuestion.type === "text") {
           isValidAnswer = matchedAnswer.trim() !== "";
         }
+
+        console.log("[DEBUG] Is valid answer:", isValidAnswer);
 
         if (isValidAnswer) {
           const successMessage =
@@ -608,9 +1005,21 @@ const readQuestion = async (manual: boolean = false) => {
             variant: "destructive",
           });
         }
+      } else {
+        console.log("[DEBUG] No voice result received");
       }
     } catch (error) {
-      console.error("Error recording voice:", error);
+      console.error("[DEBUG] Error recording voice:", error);
+      console.log(
+        "[DEBUG] Error type:",
+        error instanceof Error ? "Error" : "Other"
+      );
+      if (error instanceof Error) {
+        console.log("[DEBUG] Error name:", error.name);
+        console.log("[DEBUG] Error message:", error.message);
+        console.log("[DEBUG] Error stack:", error.stack);
+      }
+
       let errorMessage =
         currentLanguage === "en"
           ? "Could not record your voice. Please try again."
@@ -618,8 +1027,10 @@ const readQuestion = async (manual: boolean = false) => {
 
       if (error instanceof Error) {
         const errorLower = error.message.toLowerCase();
+        console.log("[DEBUG] Error message (lowercase):", errorLower);
+
         if (errorLower.includes("reset called")) {
-          // Silently handle reset-triggered errors
+          console.log("[DEBUG] Reset called error, silently handling");
           return;
         }
         if (
@@ -682,9 +1093,11 @@ const readQuestion = async (manual: boolean = false) => {
         duration: 6000,
       });
     } finally {
+      console.log("[DEBUG] Setting isListening to false");
       setIsListening(false);
       setIsWaitingToRecord(false);
     }
+    console.log("[DEBUG] === START VOICE RECORDING END ===");
   };
 
   const stopVoiceRecording = () => {
@@ -1058,6 +1471,103 @@ const readQuestion = async (manual: boolean = false) => {
     setCurrentLanguage(language);
     setCurrentQuestionIndex(0);
     setAnswers([]);
+
+    // If switching to English, immediately read the first question
+    if (language === "en") {
+      setTimeout(() => {
+        manualReadQuestion();
+      }, 0);
+    }
+  };
+
+  // Helper to wait for voices to be loaded
+  const waitForVoices = () => {
+    return new Promise<SpeechSynthesisVoice[]>((resolve) => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length) {
+        resolve(voices);
+        return;
+      }
+      window.speechSynthesis.onvoiceschanged = () => {
+        const loadedVoices = window.speechSynthesis.getVoices();
+        if (loadedVoices.length) {
+          resolve(loadedVoices);
+        }
+      };
+    });
+  };
+
+  // Refactored manual readQuestion for iOS Safari/English
+  const manualReadQuestion = async () => {
+    if (!isVoiceEnabled) return;
+    console.log("[DEBUG] Manual readQuestion triggered");
+    const isIOSSafari =
+      /iPad|iPhone|iPod/.test(navigator.userAgent) &&
+      /Safari/.test(navigator.userAgent) &&
+      !/Chrome/.test(navigator.userAgent);
+    if (isIOSSafari && currentLanguage === "en") {
+      // Wait for voices to be loaded
+      const voices = await waitForVoices();
+      if (!voices.length) {
+        toast({
+          title: "No Voices Available",
+          description:
+            "No English voices are available on this device. Please check your iOS settings.",
+          variant: "destructive",
+        });
+        return;
+      }
+      // Cancel any previous speech
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(currentQuestion.question);
+      utterance.lang = "en-US";
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      utterance.volume = 1;
+      const englishVoice =
+        voices.find((v) => v.lang.startsWith("en") && v.default) ||
+        voices.find((v) => v.lang.startsWith("en")) ||
+        null;
+      if (englishVoice) utterance.voice = englishVoice;
+      utterance.onstart = () => {
+        console.log("[DEBUG] Browser synthesis started");
+      };
+      utterance.onend = () => {
+        console.log("[DEBUG] Browser synthesis completed");
+        setIsSpeaking(false);
+        handlePostSpeech();
+      };
+      utterance.onerror = (event) => {
+        console.error("[DEBUG] Browser synthesis error:", event.error);
+        setIsSpeaking(false);
+        toast({
+          title: "Speech Error",
+          description:
+            "Could not play speech. Make sure your device is not muted.",
+          variant: "destructive",
+        });
+        handlePostSpeech();
+      };
+      setIsSpeaking(true);
+      setTimeout(() => {
+        window.speechSynthesis.speak(utterance);
+        // Warn if device is muted (no onstart after 1s)
+        setTimeout(() => {
+          if (!window.speechSynthesis.speaking) {
+            toast({
+              title: "No Sound?",
+              description:
+                "If you don't hear anything, make sure your iPhone is not muted and volume is up.",
+              variant: "default",
+            });
+          }
+        }, 1000);
+      }, 10); // Let UI update before speaking
+      return;
+    }
+    // Fallback to normal readQuestion for other cases
+    setIsSpeaking(true);
+    await readQuestion(true);
   };
 
   if (showThankYou) {
@@ -1125,14 +1635,14 @@ const readQuestion = async (manual: boolean = false) => {
                 ? "On"
                 : "បើក"
               : currentLanguage === "en"
-                ? "Off"
-                : "បិទ"}
+              ? "Off"
+              : "បិទ"}
           </Button>
 
           <Button
             variant="outline"
             size="sm"
-            onClick={() => readQuestion(true)}
+            onClick={manualReadQuestion}
             disabled={!isVoiceEnabled || isSpeaking}
             className="flex items-center gap-2"
           >
@@ -1142,8 +1652,8 @@ const readQuestion = async (manual: boolean = false) => {
                 ? "Reading..."
                 : "កំពុងអាន..."
               : currentLanguage === "en"
-                ? "Read Question"
-                : "អានសំណួរ"}
+              ? "Read Question"
+              : "អានសំណួរ"}
           </Button>
         </div>
         {/* Question Card */}
@@ -1185,8 +1695,8 @@ const readQuestion = async (manual: boolean = false) => {
                 ? "Submit"
                 : "ដាក់ស្នើ"
               : currentLanguage === "en"
-                ? "Next"
-                : "បន្ទាប់"}
+              ? "Next"
+              : "បន្ទាប់"}
             <ArrowRight size={16} />
           </Button>
         </div>
