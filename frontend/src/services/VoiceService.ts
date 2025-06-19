@@ -544,18 +544,31 @@ export class VoiceService {
           this.recognition.onend = () => {
             if (silenceTimeout) clearTimeout(silenceTimeout);
             if (finalTimeout) clearTimeout(finalTimeout);
-            if (fullTranscript) {
-              resolve(fullTranscript);
-            } else if (interimTranscript) {
-              resolve(interimTranscript);
-            } else if (!hasReceivedResults) {
-              reject(
-                new Error("No speech detected. Please try speaking again.")
-              );
+            // For Khmer: resolve with any available transcript (even if not final)
+            if (this.currentLanguage === "km") {
+              if (fullTranscript) {
+                resolve(fullTranscript);
+              } else if (interimTranscript) {
+                resolve(interimTranscript);
+              } else {
+                reject(
+                  new Error("No speech detected. Please try speaking again.")
+                );
+              }
             } else {
-              reject(
-                new Error("No speech detected. Please try speaking again.")
-              );
+              if (fullTranscript) {
+                resolve(fullTranscript);
+              } else if (interimTranscript) {
+                resolve(interimTranscript);
+              } else if (!hasReceivedResults) {
+                reject(
+                  new Error("No speech detected. Please try speaking again.")
+                );
+              } else {
+                reject(
+                  new Error("No speech detected. Please try speaking again.")
+                );
+              }
             }
           };
           this.recognition.onerror = (event) => {

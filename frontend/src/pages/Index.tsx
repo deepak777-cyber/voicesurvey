@@ -63,6 +63,7 @@ const Index = () => {
   const navigationRef = useRef(false);
   const [isWaitingToRecord, setIsWaitingToRecord] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
+  const [micPermissionGranted, setMicPermissionGranted] = useState(false);
 
   const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
@@ -238,6 +239,27 @@ const Index = () => {
     }
   }, []); // Empty dependency array means this runs once when component mounts
 
+  // Prompt for microphone permission as soon as possible (iOS only)
+  useEffect(() => {
+    if (!isIOS()) return;
+    const requestMicPermission = async () => {
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          await navigator.mediaDevices.getUserMedia({ audio: true });
+          setMicPermissionGranted(true);
+          console.log("[VoiceSurvey] Microphone permission granted (iOS)");
+        } else {
+          setMicPermissionGranted(false);
+          console.warn("[VoiceSurvey] getUserMedia not supported (iOS)");
+        }
+      } catch (err) {
+        setMicPermissionGranted(false);
+        console.warn("[VoiceSurvey] Microphone permission denied (iOS)", err);
+      }
+    };
+    requestMicPermission();
+  }, []);
+
   const calculateElapsedTime = () => {
     const startTime = new Date(
       localStorage.getItem("startTime") || new Date().toISOString()
@@ -341,14 +363,12 @@ const Index = () => {
         duration: 1000,
       });
 
-      if (!isIOS()) {
+      if (!isIOS() || (isIOS() && micPermissionGranted)) {
         const timeoutId = setTimeout(() => {
           console.log(
             "Auto-record timeout triggered. navigationRef:",
             navigationRef.current
           );
-
-          // Check: voice is enabled
           if (isVoiceEnabled) {
             console.log("Starting auto-record");
             setIsWaitingToRecord(false);
@@ -358,12 +378,10 @@ const Index = () => {
             setIsWaitingToRecord(false);
           }
         }, 1500);
-
-        // Store timeout ID in both state and ref
         autoRecordTimeoutRef.current = timeoutId;
         setAutoRecordTimeoutId(timeoutId);
       } else {
-        // On iOS, require manual tap to start recording
+        // On iOS, if permission not granted, require manual tap
         setIsWaitingToRecord(false);
       }
     } catch (error) {
