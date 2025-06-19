@@ -391,11 +391,27 @@ export class VoiceService {
   public startListening(): Promise<string> {
     return new Promise(async (resolve, reject) => {
       try {
-        console.log("[VoiceService] Starting speech recognition...");
-        console.log("[VoiceService] Current language:", this.currentLanguage);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isSafari =
+          /Safari/.test(navigator.userAgent) &&
+          !/Chrome/.test(navigator.userAgent);
+        const isIOSSafari = isIOS && isSafari;
+        const SpeechRecognition =
+          window.SpeechRecognition || window.webkitSpeechRecognition;
+        console.log(
+          "[VoiceService] startListening called. isIOS:",
+          isIOS,
+          "isSafari:",
+          isSafari,
+          "lang:",
+          this.currentLanguage
+        );
 
-        // Use Azure SDK for Khmer only
-        if (this.currentLanguage && this.currentLanguage.toString() === "km") {
+        // --- iOS: Khmer (Azure SDK only, must be inside tap) ---
+        if (isIOSSafari && this.currentLanguage === "km") {
+          console.log(
+            "[VoiceService] iOS Safari + Khmer: Using Azure SDK for Khmer"
+          );
           try {
             const key = import.meta.env.VITE_AZURE_TTS_KEY || "";
             const region =
@@ -404,181 +420,174 @@ export class VoiceService {
             resolve(transcript);
             return;
           } catch (err) {
-            console.error("[VoiceService] Azure SDK Khmer STT failed:", err);
-            console.log(
-              "[VoiceService] Falling back to browser speech recognition..."
+            console.error(
+              "[VoiceService] Azure SDK Khmer STT failed on iOS:",
+              err
             );
-            // Fall through to browser recognition below
+            reject(err);
+            return;
           }
         }
 
-        // Use browser speech recognition for English and fallback for Khmer
-        if (!this.recognition) {
-          reject(new Error("Speech recognition not supported"));
+        // --- iOS: English (webkitSpeechRecognition) ---
+        if (isIOSSafari && this.currentLanguage === "en" && SpeechRecognition) {
+          console.log(
+            "[VoiceService] iOS Safari + English: Using webkitSpeechRecognition"
+          );
+          this.stopListening();
+          this.recognition = new SpeechRecognition();
+          this.setupRecognitionConfig();
+          this.recognition.lang = "en-US";
+
+          let fullTranscript = "";
+          let hasReceivedResults = false;
+          let silenceTimeout: NodeJS.Timeout | null = null;
+
+          this.recognition.onresult = (event) => {
+            hasReceivedResults = true;
+            fullTranscript = event.results[0][0].transcript;
+            console.log(
+              "[VoiceService] iOS English transcript:",
+              fullTranscript
+            );
+            // Reset silence timeout on every result
+            if (silenceTimeout) clearTimeout(silenceTimeout);
+            silenceTimeout = setTimeout(() => {
+              if (this.recognition) {
+                this.recognition.stop();
+              }
+            }, 3000); // 3 seconds of silence before stopping
+          };
+          this.recognition.onend = () => {
+            if (silenceTimeout) clearTimeout(silenceTimeout);
+            if (fullTranscript) {
+              resolve(fullTranscript);
+            } else {
+              reject(
+                new Error("No speech detected. Please try speaking again.")
+              );
+            }
+          };
+          this.recognition.onerror = (event) => {
+            reject(new Error(`Speech recognition error: ${event.error}`));
+          };
+          try {
+            this.recognition.start();
+          } catch (error) {
+            reject(error);
+          }
           return;
         }
 
-        // Check for iOS Safari and provide specific guidance
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-        const isSafari =
-          /Safari/.test(navigator.userAgent) &&
-          !/Chrome/.test(navigator.userAgent);
-        const isIOSSafari = isIOS && isSafari;
-
-        if (isIOSSafari && this.currentLanguage === "km") {
-          console.warn(
-            "iOS Safari detected with Khmer language - recognition may be limited"
+        // --- Non-iOS: Khmer or English (prefer browser, fallback to Azure for Khmer) ---
+        if (SpeechRecognition) {
+          console.log(
+            "[VoiceService] Non-iOS or iOS non-Safari: Using browser SpeechRecognition"
           );
-          console.warn("Consider switching to Chrome or Firefox on iOS");
-        }
+          this.stopListening();
+          this.recognition = new SpeechRecognition();
+          this.setupRecognitionConfig();
+          this.recognition.lang =
+            this.currentLanguage === "km" ? "km-KH" : "en-US";
 
-        // Reset recognition instance to clear any previous state
-        this.stopListening();
-        this.recognition = new (window.SpeechRecognition ||
-          window.webkitSpeechRecognition)();
-        this.setupRecognitionConfig();
+          let fullTranscript = "";
+          let interimTranscript = "";
+          let hasReceivedResults = false;
+          let silenceTimeout: NodeJS.Timeout | null = null;
+          let finalTimeout: NodeJS.Timeout | null = null;
+          let isFinalReceived = false;
 
-        let fullTranscript = "";
-        let interimTranscript = "";
-        let hasReceivedResults = false;
-        let silenceTimeout: NodeJS.Timeout | null = null;
-        let finalTimeout: NodeJS.Timeout | null = null;
-        let isFinalReceived = false;
+          const resetSilenceTimeout = () => {
+            if (silenceTimeout) clearTimeout(silenceTimeout);
+            silenceTimeout = setTimeout(() => {
+              if (this.recognition && !isFinalReceived) {
+                console.log("Silence detected, stopping recognition");
+                this.recognition.stop();
+              }
+            }, 3500); // 3.5 seconds of silence before stopping
+          };
 
-        const resetSilenceTimeout = () => {
-          if (silenceTimeout) clearTimeout(silenceTimeout);
-          silenceTimeout = setTimeout(() => {
-            if (this.recognition && !isFinalReceived) {
-              console.log("Silence detected, stopping recognition");
-              this.recognition.stop();
+          this.recognition.onstart = () => {
+            hasReceivedResults = false;
+            fullTranscript = "";
+            interimTranscript = "";
+            isFinalReceived = false;
+            resetSilenceTimeout();
+            setTimeout(() => {
+              if (this.recognition && !isFinalReceived) {
+                this.recognition.stop();
+              }
+            }, 15000);
+          };
+          this.recognition.onresult = (event) => {
+            hasReceivedResults = true;
+            interimTranscript = "";
+            resetSilenceTimeout();
+            for (let i = 0; i < event.results.length; i++) {
+              const result = event.results[i];
+              const transcript = result[0].transcript.trim();
+              if (result.isFinal) {
+                isFinalReceived = true;
+                let processedTranscript = this.cleanTranscript(transcript);
+                fullTranscript = processedTranscript;
+                if (finalTimeout) clearTimeout(finalTimeout);
+                finalTimeout = setTimeout(() => {
+                  if (this.recognition) {
+                    this.recognition.stop();
+                  }
+                }, 2000);
+              } else {
+                interimTranscript = this.cleanTranscript(transcript);
+              }
             }
-          }, 5000); // Increased to 5 seconds of silence before stopping
-        };
-
-        this.recognition.onstart = () => {
-          console.log("Browser speech recognition started");
-          hasReceivedResults = false;
-          fullTranscript = "";
-          interimTranscript = "";
-          isFinalReceived = false;
-          resetSilenceTimeout();
-
-          // Add a longer overall timeout as backup
-          setTimeout(() => {
-            if (this.recognition && !isFinalReceived) {
-              console.log("Overall timeout reached, stopping recognition");
-              this.recognition.stop();
-            }
-          }, 15000); // 15 seconds total timeout
-        };
-
-        this.recognition.onresult = (event) => {
-          hasReceivedResults = true;
-          interimTranscript = "";
-          resetSilenceTimeout();
-
-          // Process all results in the event
-          for (let i = 0; i < event.results.length; i++) {
-            const result = event.results[i];
-            const transcript = result[0].transcript.trim();
-
-            if (result.isFinal) {
-              isFinalReceived = true;
-
-              // Clean the transcript for Khmer (remove English words but don't reject)
-              let processedTranscript = this.cleanTranscript(transcript);
-
-              fullTranscript = processedTranscript;
-              console.log("Final transcript (cleaned):", fullTranscript);
-
-              // Set a timeout to stop after receiving final result
-              if (finalTimeout) clearTimeout(finalTimeout);
-              finalTimeout = setTimeout(() => {
-                if (this.recognition) {
-                  this.recognition.stop();
-                }
-              }, 2000); // Increased to 2 seconds after final result before stopping
-            } else {
-              // For interim results, also clean but don't reject
-              interimTranscript = this.cleanTranscript(transcript);
-              console.log("Interim transcript (cleaned):", interimTranscript);
-            }
-          }
-        };
-
-        this.recognition.onend = () => {
-          console.log("Browser speech recognition ended");
-          if (silenceTimeout) clearTimeout(silenceTimeout);
-          if (finalTimeout) clearTimeout(finalTimeout);
-
-          if (fullTranscript) {
-            resolve(fullTranscript);
-          } else if (interimTranscript) {
-            resolve(interimTranscript);
-          } else if (!hasReceivedResults) {
-            // Don't restart automatically - just reject with a clear message
-            reject(new Error("No speech detected. Please try speaking again."));
-          } else {
-            // Provide iOS-specific error message
-            if (isIOSSafari && this.currentLanguage === "km") {
+          };
+          this.recognition.onend = () => {
+            if (silenceTimeout) clearTimeout(silenceTimeout);
+            if (finalTimeout) clearTimeout(finalTimeout);
+            if (fullTranscript) {
+              resolve(fullTranscript);
+            } else if (interimTranscript) {
+              resolve(interimTranscript);
+            } else if (!hasReceivedResults) {
               reject(
-                new Error(
-                  "Khmer speech recognition may not work properly on iOS Safari. Try using Chrome or Firefox on iOS, or use a desktop browser."
-                )
+                new Error("No speech detected. Please try speaking again.")
               );
             } else {
               reject(
                 new Error("No speech detected. Please try speaking again.")
               );
             }
+          };
+          this.recognition.onerror = (event) => {
+            reject(new Error(`Speech recognition error: ${event.error}`));
+          };
+          try {
+            this.recognition.start();
+          } catch (error) {
+            reject(error);
           }
-        };
+          return;
+        }
 
-        this.recognition.onerror = (event) => {
-          console.error("Browser speech recognition error:", event.error);
-          if (silenceTimeout) clearTimeout(silenceTimeout);
-          if (finalTimeout) clearTimeout(finalTimeout);
-
-          // Handle Safari's "service not allowed" error specifically
-          if (event.error === "not-allowed") {
-            reject(
-              new Error(
-                "Microphone access denied. Please allow microphone access and try again."
-              )
-            );
+        // --- Fallback: Azure SDK for Khmer if browser SpeechRecognition not available ---
+        if (this.currentLanguage === "km") {
+          console.log("[VoiceService] Fallback: Using Azure SDK for Khmer");
+          try {
+            const key = import.meta.env.VITE_AZURE_TTS_KEY || "";
+            const region =
+              import.meta.env.VITE_AZURE_TTS_REGION || "centralindia";
+            const transcript = await recognizeKhmerSpeech(key, region);
+            resolve(transcript);
+            return;
+          } catch (err) {
+            reject(err);
             return;
           }
-
-          if (event.error === "no-speech" && !hasReceivedResults) {
-            // Only reject on no-speech if we haven't received any results
-            if (isIOSSafari && this.currentLanguage === "km") {
-              reject(
-                new Error(
-                  "Khmer speech recognition may not work properly on iOS Safari. Try using Chrome or Firefox on iOS."
-                )
-              );
-            } else {
-              reject(
-                new Error("No speech detected. Please try speaking again.")
-              );
-            }
-          } else if (event.error === "network") {
-            reject(
-              new Error("Network error occurred. Please check your connection.")
-            );
-          } else {
-            // For other errors, don't restart automatically - just reject
-            reject(new Error(`Speech recognition error: ${event.error}`));
-          }
-        };
-
-        try {
-          this.recognition.start();
-        } catch (error) {
-          reject(error);
         }
+
+        // --- No support ---
+        reject(new Error("Speech recognition not supported"));
       } catch (error) {
-        console.error("[VoiceService] Error in startListening:", error);
         reject(error);
       }
     });

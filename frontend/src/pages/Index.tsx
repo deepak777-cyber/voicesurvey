@@ -37,6 +37,10 @@ interface Answer {
   answer: string;
 }
 
+function isIOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent);
+}
+
 const Index = () => {
   const [currentLanguage, setCurrentLanguage] = useState<Language>("km");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -337,26 +341,31 @@ const Index = () => {
         duration: 1000,
       });
 
-      const timeoutId = setTimeout(() => {
-        console.log(
-          "Auto-record timeout triggered. navigationRef:",
-          navigationRef.current
-        );
+      if (!isIOS()) {
+        const timeoutId = setTimeout(() => {
+          console.log(
+            "Auto-record timeout triggered. navigationRef:",
+            navigationRef.current
+          );
 
-        // Check: voice is enabled
-        if (isVoiceEnabled) {
-          console.log("Starting auto-record");
-          setIsWaitingToRecord(false);
-          startVoiceRecording();
-        } else {
-          console.log("Auto-record cancelled. Voice disabled");
-          setIsWaitingToRecord(false);
-        }
-      }, 1500);
+          // Check: voice is enabled
+          if (isVoiceEnabled) {
+            console.log("Starting auto-record");
+            setIsWaitingToRecord(false);
+            startVoiceRecording();
+          } else {
+            console.log("Auto-record cancelled. Voice disabled");
+            setIsWaitingToRecord(false);
+          }
+        }, 1500);
 
-      // Store timeout ID in both state and ref
-      autoRecordTimeoutRef.current = timeoutId;
-      setAutoRecordTimeoutId(timeoutId);
+        // Store timeout ID in both state and ref
+        autoRecordTimeoutRef.current = timeoutId;
+        setAutoRecordTimeoutId(timeoutId);
+      } else {
+        // On iOS, require manual tap to start recording
+        setIsWaitingToRecord(false);
+      }
     } catch (error) {
       console.error("Speech error:", error);
       setIsWaitingToRecord(false);
@@ -506,7 +515,9 @@ const Index = () => {
   };
 
   const startVoiceRecording = async () => {
+    console.log("[VoiceSurvey] startVoiceRecording called");
     if (!isVoiceEnabled) {
+      console.log("[VoiceSurvey] Voice features are disabled");
       const errorMessage =
         currentLanguage === "en"
           ? "Please enable voice features to use voice recording."
@@ -524,6 +535,7 @@ const Index = () => {
     }
 
     if (!isVoiceSupported) {
+      console.log("[VoiceSurvey] Voice is not supported in this browser");
       const errorMessage =
         currentLanguage === "en"
           ? "Please ensure you've granted microphone permissions and are using a supported browser."
@@ -542,14 +554,20 @@ const Index = () => {
 
     // Don't start recording if already listening, speaking, or waiting to record
     if (isListening || isSpeaking || isWaitingToRecord) {
+      console.log(
+        `[VoiceSurvey] Not starting recording: isListening=${isListening}, isSpeaking=${isSpeaking}, isWaitingToRecord=${isWaitingToRecord}`
+      );
       return;
     }
 
     try {
       setIsListening(true);
+      console.log("[VoiceSurvey] Calling voiceService.startListening()");
       const result = await voiceService.startListening();
+      console.log("[VoiceSurvey] voiceService.startListening result:", result);
       if (result) {
         const matchedAnswer = matchVoiceToOption(result);
+        console.log("[VoiceSurvey] Matched answer:", matchedAnswer);
         handleAnswerChange(matchedAnswer);
 
         // Check if a valid option was selected
@@ -574,6 +592,8 @@ const Index = () => {
         } else if (currentQuestion.type === "text") {
           isValidAnswer = matchedAnswer.trim() !== "";
         }
+
+        console.log("[VoiceSurvey] isValidAnswer:", isValidAnswer);
 
         if (isValidAnswer) {
           const successMessage =
@@ -601,9 +621,13 @@ const Index = () => {
             variant: "destructive",
           });
         }
+      } else {
+        console.log(
+          "[VoiceSurvey] No result returned from voiceService.startListening"
+        );
       }
     } catch (error) {
-      console.error("Error recording voice:", error);
+      console.error("[VoiceSurvey] Error recording voice:", error);
       let errorMessage =
         currentLanguage === "en"
           ? "Could not record your voice. Please try again."
@@ -613,6 +637,7 @@ const Index = () => {
         const errorLower = error.message.toLowerCase();
         if (errorLower.includes("reset called")) {
           // Silently handle reset-triggered errors
+          console.log("[VoiceSurvey] Reset called during recording");
           return;
         }
         if (
@@ -668,6 +693,11 @@ const Index = () => {
         }
       }
 
+      if (isIOS()) {
+        errorMessage =
+          "Voice recording is limited on iPhone/iPad browsers. Please use the keyboard if voice does not work, or try updating your iOS version.";
+      }
+
       toast({
         title: currentLanguage === "en" ? "Recording Error" : "កំហុសការថត",
         description: errorMessage,
@@ -677,6 +707,7 @@ const Index = () => {
     } finally {
       setIsListening(false);
       setIsWaitingToRecord(false);
+      console.log("[VoiceSurvey] Recording finished (finally block)");
     }
   };
 
