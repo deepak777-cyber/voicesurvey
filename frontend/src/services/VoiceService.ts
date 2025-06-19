@@ -442,6 +442,9 @@ export class VoiceService {
           let fullTranscript = "";
           let hasReceivedResults = false;
           let silenceTimeout: NodeJS.Timeout | null = null;
+          let finalTimeout: NodeJS.Timeout | null = null;
+          let isFinalReceived = false;
+          let lastNonEmptyTranscript = "";
 
           this.recognition.onresult = (event) => {
             hasReceivedResults = true;
@@ -496,6 +499,7 @@ export class VoiceService {
           let silenceTimeout: NodeJS.Timeout | null = null;
           let finalTimeout: NodeJS.Timeout | null = null;
           let isFinalReceived = false;
+          let lastNonEmptyTranscript = "";
 
           const resetSilenceTimeout = () => {
             if (silenceTimeout) clearTimeout(silenceTimeout);
@@ -512,6 +516,7 @@ export class VoiceService {
             fullTranscript = "";
             interimTranscript = "";
             isFinalReceived = false;
+            lastNonEmptyTranscript = "";
             resetSilenceTimeout();
             setTimeout(() => {
               if (this.recognition && !isFinalReceived) {
@@ -526,6 +531,9 @@ export class VoiceService {
             for (let i = 0; i < event.results.length; i++) {
               const result = event.results[i];
               const transcript = result[0].transcript.trim();
+              if (transcript) {
+                lastNonEmptyTranscript = transcript;
+              }
               if (result.isFinal) {
                 isFinalReceived = true;
                 let processedTranscript = this.cleanTranscript(transcript);
@@ -550,6 +558,8 @@ export class VoiceService {
                 resolve(fullTranscript);
               } else if (interimTranscript) {
                 resolve(interimTranscript);
+              } else if (lastNonEmptyTranscript) {
+                resolve(lastNonEmptyTranscript);
               } else {
                 reject(
                   new Error("No speech detected. Please try speaking again.")
