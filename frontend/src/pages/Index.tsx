@@ -239,27 +239,6 @@ const Index = () => {
     }
   }, []); // Empty dependency array means this runs once when component mounts
 
-  // Prompt for microphone permission as soon as possible (iOS only)
-  useEffect(() => {
-    if (!isIOS()) return;
-    const requestMicPermission = async () => {
-      try {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          await navigator.mediaDevices.getUserMedia({ audio: true });
-          setMicPermissionGranted(true);
-          console.log("[VoiceSurvey] Microphone permission granted (iOS)");
-        } else {
-          setMicPermissionGranted(false);
-          console.warn("[VoiceSurvey] getUserMedia not supported (iOS)");
-        }
-      } catch (err) {
-        setMicPermissionGranted(false);
-        console.warn("[VoiceSurvey] Microphone permission denied (iOS)", err);
-      }
-    };
-    requestMicPermission();
-  }, []);
-
   const calculateElapsedTime = () => {
     const startTime = new Date(
       localStorage.getItem("startTime") || new Date().toISOString()
@@ -348,41 +327,32 @@ const Index = () => {
 
       console.log("Finished speaking. navigationRef:", navigationRef.current);
 
-      // Always auto-record after reading, regardless of whether answer exists
-      console.log("Setting up auto-record");
-      setIsWaitingToRecord(true);
-
-      const toastMessage =
-        currentLanguage === "en"
-          ? "Recording will start in a moment..."
-          : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
-
-      toast({
-        title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
-        description: toastMessage,
-        duration: 1000,
-      });
-
-      if (!isIOS() || (isIOS() && micPermissionGranted)) {
+      // Android: auto-record after reading. iOS: require manual tap.
+      if (!isIOS()) {
+        // Android/other: auto-record
+        setIsWaitingToRecord(true);
+        const toastMessage =
+          currentLanguage === "en"
+            ? "Recording will start in a moment..."
+            : "ការថតសំឡេងនឹងចាប់ផ្តើមបន្តិចទៀត...";
+        toast({
+          title: currentLanguage === "en" ? "Get Ready" : "រួចរាល់",
+          description: toastMessage,
+          duration: 1000,
+        });
         const timeoutId = setTimeout(() => {
-          console.log(
-            "Auto-record timeout triggered. navigationRef:",
-            navigationRef.current
-          );
           if (isVoiceEnabled) {
-            console.log("Starting auto-record");
             setIsWaitingToRecord(false);
             startVoiceRecording();
           } else {
-            console.log("Auto-record cancelled. Voice disabled");
             setIsWaitingToRecord(false);
           }
         }, 1500);
         autoRecordTimeoutRef.current = timeoutId;
         setAutoRecordTimeoutId(timeoutId);
       } else {
-        // On iOS, if permission not granted, require manual tap
-        setIsWaitingToRecord(false);
+        // iOS: show tap-to-record button, do not auto-record
+        setIsWaitingToRecord(true); // This will show the button in the UI
       }
     } catch (error) {
       console.error("Speech error:", error);
@@ -570,10 +540,10 @@ const Index = () => {
       return;
     }
 
-    // Don't start recording if already listening, speaking, or waiting to record
-    if (isListening || isSpeaking || isWaitingToRecord) {
+    // Don't start recording if already listening or speaking
+    if (isListening || isSpeaking) {
       console.log(
-        `[VoiceSurvey] Not starting recording: isListening=${isListening}, isSpeaking=${isSpeaking}, isWaitingToRecord=${isWaitingToRecord}`
+        `[VoiceSurvey] Not starting recording: isListening=${isListening}, isSpeaking=${isSpeaking}`
       );
       return;
     }

@@ -459,7 +459,7 @@ export class VoiceService {
               if (this.recognition) {
                 this.recognition.stop();
               }
-            }, 3000); // 3 seconds of silence before stopping
+            }, 1000); // 1 seconds of silence before stopping
           };
           this.recognition.onend = () => {
             if (silenceTimeout) clearTimeout(silenceTimeout);

@@ -36,6 +36,9 @@ interface SurveyQuestionProps {
   language: Language;
 }
 
+// Add iOS detection utility
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+
 export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   question,
   answer,
@@ -351,13 +354,14 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   const renderVoiceButton = () => {
     if (!voiceEnabled) return null;
 
+    // Always show the button when voice is enabled, regardless of platform
     return (
       <div className="flex flex-col items-center mt-4">
         <Button
           variant={isListening ? "destructive" : "outline"}
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
-          disabled={isProcessing || isSpeaking || isWaitingToRecord}
+          disabled={isProcessing || isSpeaking}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
             isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
           }`}
@@ -366,8 +370,6 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
           {isProcessing
             ? t("Processing...", "កំពុងដំណើរការ...")
             : isSpeaking
-            ? t("Please wait...", "សូមរង់ចាំ...")
-            : isWaitingToRecord
             ? t("Please wait...", "សូមរង់ចាំ...")
             : isListening
             ? t("Tap to Stop", "ចុចដើម្បីបញ្ឈប់")
