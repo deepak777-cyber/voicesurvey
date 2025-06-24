@@ -66,6 +66,9 @@ const Index = () => {
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
   const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
   const isListeningForConfirmationRef = useRef(false);
+  const [iosConfirmationMessage, setIosConfirmationMessage] = useState<
+    string | null
+  >(null);
 
   const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
@@ -665,6 +668,7 @@ const Index = () => {
         }
         if (!isValid) {
           setIsAwaitingConfirmation(false);
+          setIosConfirmationMessage(null);
           // Speak and toast: please try again with a valid option
           const msg =
             currentLanguage === "en"
@@ -682,20 +686,33 @@ const Index = () => {
           return;
         }
       }
+
+      // Divert flow for iOS devices
+      if (isIOS()) {
+        const message =
+          currentLanguage === "en"
+            ? `You answered: "${answer}". If this is incorrect, please tap to record again.`
+            : `អ្នកបានឆ្លើយថា៖ "${answer}"។ ប្រសិនបើមិនត្រឹមត្រូវ សូមចុចដើម្បីថតម្តងទៀត។`;
+
+        setIosConfirmationMessage(message);
+        voiceService.speak(message);
+        return; // End the flow here for iOS
+      }
+
+      // Standard confirmation flow for non-iOS
       setIsAwaitingConfirmation(true);
-      // Stop listening before speaking confirmation
       voiceService.stopListening();
       const confirmText =
         currentLanguage === "en"
           ? `You answered: ${answer}. Do you confirm this answer?`
           : `អ្នកបានឆ្លើយថា: ${answer}។ តើអ្នកបញ្ជាក់ចម្លើយនេះឬទេ?`;
-      // Speak confirmation, then listen for confirmation
       (async () => {
         await voiceService.speak(confirmText);
         listenForConfirmation();
       })();
     } else {
       setIsAwaitingConfirmation(false);
+      setIosConfirmationMessage(null);
     }
   };
 
@@ -1040,6 +1057,7 @@ const Index = () => {
   // Reset confirmation state on question change
   useEffect(() => {
     setIsAwaitingConfirmation(false);
+    setIosConfirmationMessage(null);
   }, [currentQuestionIndex, currentLanguage]);
 
   // Listen for voice confirmation (yes/no)
@@ -1203,8 +1221,16 @@ const Index = () => {
             isWaitingToRecord={isWaitingToRecord}
             language={currentLanguage}
           />
-          {/* Confirmation UI */}
-          {getCurrentAnswer() && isAwaitingConfirmation && (
+
+          {/* iOS Confirmation Message */}
+          {isIOS() && iosConfirmationMessage && (
+            <div className="mt-4 text-center text-gray-700 italic">
+              {iosConfirmationMessage}
+            </div>
+          )}
+
+          {/* Non-iOS Confirmation UI */}
+          {!isIOS() && getCurrentAnswer() && isAwaitingConfirmation && (
             <div className="mt-4 flex flex-col items-center">
               <div className="text-gray-700 mb-2">
                 {currentLanguage === "en"
