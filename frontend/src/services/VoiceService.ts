@@ -4,7 +4,10 @@ import {
   AzureSpeechToTextService,
   AzureSpeechConfig,
 } from "./AzureSpeechToTextService";
-import { recognizeKhmerSpeech } from "./AzureSpeechSdkService";
+import {
+  recognizeKhmerSpeech,
+  recognizeEnglishSpeech,
+} from "./AzureSpeechSdkService";
 
 // Extend Window interface for TypeScript
 declare global {
@@ -429,57 +432,26 @@ export class VoiceService {
           }
         }
 
-        // --- iOS: English (webkitSpeechRecognition) ---
-        if (isIOSSafari && this.currentLanguage === "en" && SpeechRecognition) {
+        // --- iOS: English (Azure SDK instead of REST/MediaRecorder) ---
+        if (isIOSSafari && this.currentLanguage === "en") {
           console.log(
-            "[VoiceService] iOS Safari + English: Using webkitSpeechRecognition"
+            "[VoiceService] iOS Safari + English: Using Azure SDK for English"
           );
-          this.stopListening();
-          this.recognition = new SpeechRecognition();
-          this.setupRecognitionConfig();
-          this.recognition.lang = "en-US";
-
-          let fullTranscript = "";
-          let hasReceivedResults = false;
-          let silenceTimeout: NodeJS.Timeout | null = null;
-          let finalTimeout: NodeJS.Timeout | null = null;
-          let isFinalReceived = false;
-          let lastNonEmptyTranscript = "";
-
-          this.recognition.onresult = (event) => {
-            hasReceivedResults = true;
-            fullTranscript = event.results[0][0].transcript;
-            console.log(
-              "[VoiceService] iOS English transcript:",
-              fullTranscript
-            );
-            // Reset silence timeout on every result
-            if (silenceTimeout) clearTimeout(silenceTimeout);
-            silenceTimeout = setTimeout(() => {
-              if (this.recognition) {
-                this.recognition.stop();
-              }
-            }, 1000); // 1 seconds of silence before stopping
-          };
-          this.recognition.onend = () => {
-            if (silenceTimeout) clearTimeout(silenceTimeout);
-            if (fullTranscript) {
-              resolve(fullTranscript);
-            } else {
-              reject(
-                new Error("No speech detected. Please try speaking again.")
-              );
-            }
-          };
-          this.recognition.onerror = (event) => {
-            reject(new Error(`Speech recognition error: ${event.error}`));
-          };
           try {
-            this.recognition.start();
-          } catch (error) {
-            reject(error);
+            const key = import.meta.env.VITE_AZURE_TTS_KEY || "";
+            const region =
+              import.meta.env.VITE_AZURE_TTS_REGION || "centralindia";
+            const transcript = await recognizeEnglishSpeech(key, region);
+            resolve(transcript);
+            return;
+          } catch (err) {
+            console.error(
+              "[VoiceService] Azure SDK English STT failed on iOS:",
+              err
+            );
+            reject(err);
+            return;
           }
-          return;
         }
 
         // --- Non-iOS: Khmer or English (prefer browser, fallback to Azure for Khmer) ---

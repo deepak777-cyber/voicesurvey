@@ -47,12 +47,22 @@ export class AzureSpeechToTextService {
         await this.setupAudioAnalysis();
 
         // Try different MIME types in order of preference
-        const mimeTypes = [
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        let mimeTypes = [
           "audio/webm;codecs=opus",
           "audio/webm",
           "audio/mp4",
           "audio/wav",
         ];
+        // On iOS, prefer mp4 or wav
+        if (isIOS) {
+          mimeTypes = [
+            "audio/mp4",
+            "audio/wav",
+            "audio/webm;codecs=opus",
+            "audio/webm",
+          ];
+        }
 
         let selectedMimeType = null;
         for (const mimeType of mimeTypes) {
@@ -63,7 +73,8 @@ export class AzureSpeechToTextService {
         }
 
         if (!selectedMimeType) {
-          throw new Error("No supported audio format found");
+          reject(new Error("No supported audio format found"));
+          return;
         }
 
         console.log("[AzureSTT] Using MIME type:", selectedMimeType);
@@ -76,6 +87,7 @@ export class AzureSpeechToTextService {
         this.audioChunks = [];
         this.isRecording = true;
         this.hasSpeech = false;
+        let recordingStartTime = Date.now();
 
         this.mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0 && this.hasSpeech) {
@@ -89,6 +101,8 @@ export class AzureSpeechToTextService {
         };
 
         this.mediaRecorder.onstop = async () => {
+          const recordingEndTime = Date.now();
+          const durationSec = (recordingEndTime - recordingStartTime) / 1000;
           if (this.audioChunks.length > 0) {
             try {
               const audioBlob = new Blob(this.audioChunks, {
@@ -97,11 +111,31 @@ export class AzureSpeechToTextService {
               console.log(
                 "[AzureSTT] Final audio blob size:",
                 audioBlob.size,
-                "bytes"
+                "bytes, type:",
+                audioBlob.type,
+                ", duration:",
+                durationSec,
+                "s"
               );
 
-              if (audioBlob.size < 1000) {
-                reject(new Error("Audio too short, please speak longer"));
+              // Optional: Play back the audio for debugging
+              if (isIOS) {
+                try {
+                  const audioUrl = URL.createObjectURL(audioBlob);
+                  const audio = new Audio(audioUrl);
+                  audio.play();
+                  setTimeout(() => URL.revokeObjectURL(audioUrl), 5000);
+                } catch (e) {
+                  console.warn("[AzureSTT] Could not play back audio blob", e);
+                }
+              }
+
+              if (audioBlob.size < 1000 || durationSec < 1) {
+                reject(
+                  new Error(
+                    "Audio too short or not captured properly. Please speak clearly for at least 1 second."
+                  )
+                );
                 return;
               }
 

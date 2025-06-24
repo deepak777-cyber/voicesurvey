@@ -364,140 +364,46 @@ const Index = () => {
 
   // Function to match voice input to multiple choice options
   const matchVoiceToOption = (voiceInput: string): string => {
-    if (!currentQuestion.options) {
-      return voiceInput;
-    }
+    if (!currentQuestion.options) return voiceInput;
 
-    // For rating questions (1-10), convert words to numbers and validate
-    if (currentQuestion.type === "rating") {
-      const normalizedInput = voiceInput.toLowerCase().trim();
+    const normalize = (str: string) =>
+      str
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
 
-      // Word to number mapping (both English and Khmer)
-      const wordToNumber: { [key: string]: string } = {
-        // English
-        one: "1",
-        first: "1",
-        two: "2",
-        second: "2",
-        three: "3",
-        third: "3",
-        four: "4",
-        fourth: "4",
-        five: "5",
-        fifth: "5",
-        six: "6",
-        sixth: "6",
-        seven: "7",
-        seventh: "7",
-        eight: "8",
-        eighth: "8",
-        nine: "9",
-        ninth: "9",
-        ten: "10",
-        tenth: "10",
-        // Khmer
-        មួយ: "1",
-        ពីរ: "2",
-        បី: "3",
-        បួន: "4",
-        ប្រាំ: "5",
-        ប្រាំមួយ: "6",
-        ប្រាំពីរ: "7",
-        ប្រាំបី: "8",
-        ប្រាំបួន: "9",
-        ដប់: "10",
-      };
-
-      // Try to match word numbers first
-      for (const [word, num] of Object.entries(wordToNumber)) {
-        if (normalizedInput.includes(word)) {
-          return num;
-        }
-      }
-
-      // Try to match digits
-      const numberMatch = normalizedInput.match(/\b(\d+)\b/);
-      if (numberMatch) {
-        const number = parseInt(numberMatch[1]);
-        if (number >= 1 && number <= 10) {
-          return number.toString();
-        }
-      }
-
-      return voiceInput;
-    }
-
-    const normalizedInput = voiceInput.toLowerCase().trim();
-
-    // For multi-select questions, handle multiple selections
-    if (currentQuestion.type === "multi-select" && currentQuestion.options) {
-      // Split on Khmer and English conjunctions
-      const inputParts = normalizedInput.split(/\s+និង\s+|\s+and\s+|\s*,\s*/);
-      const matchedOptions: string[] = [];
-
-      inputParts.forEach((part) => {
-        const trimmedPart = part.trim();
-        const match = currentQuestion.options?.find(
-          (option) =>
-            option.name.toLowerCase() === trimmedPart ||
-            option.name.toLowerCase().includes(trimmedPart) ||
-            trimmedPart.includes(option.name.toLowerCase())
-        );
-        if (match && !matchedOptions.includes(match.name)) {
-          matchedOptions.push(match.name);
-        }
-      });
-
-      return matchedOptions.length > 0 ? matchedOptions.join(",") : voiceInput;
-    }
+    const normalizedInput = normalize(voiceInput);
 
     // For single select questions
     if (currentQuestion.type === "single-select" && currentQuestion.options) {
-      // Try exact match first
       const exactMatch = currentQuestion.options.find(
-        (option) => option.name.toLowerCase() === normalizedInput
+        (option) => normalize(option.name) === normalizedInput
       );
-      if (exactMatch) {
-        return exactMatch.name;
-      }
-
-      // Try partial match if no exact match found
-      const partialMatch = currentQuestion.options.find(
-        (option) =>
-          option.name.toLowerCase().includes(normalizedInput) ||
-          normalizedInput.includes(option.name.toLowerCase())
-      );
-      if (partialMatch) {
-        return partialMatch.name;
-      }
-
-      // Special handling for yes/no in Khmer
-      if (currentQuestion.options.length === 2) {
-        const yesPatterns = ["បាទ", "ចាស", "yes", "yeah", "yep"];
-        const noPatterns = ["ទេ", "no", "nope"];
-
-        if (
-          yesPatterns.some((pattern) =>
-            normalizedInput.includes(pattern.toLowerCase())
-          )
-        ) {
-          return (
-            currentQuestion.options.find((opt) => opt.value === 1)?.name ||
-            voiceInput
-          );
-        }
-        if (
-          noPatterns.some((pattern) =>
-            normalizedInput.includes(pattern.toLowerCase())
-          )
-        ) {
-          return (
-            currentQuestion.options.find((opt) => opt.value === 0)?.name ||
-            voiceInput
-          );
-        }
-      }
+      return exactMatch ? exactMatch.name : voiceInput;
     }
+
+    // For multi-select questions
+    if (currentQuestion.type === "multi-select" && currentQuestion.options) {
+      const inputParts = normalizedInput.split(
+        /\s+and\s+|\s*,\s*|\s+or\s+|\s+plus\s+|\s+និង\s+/i
+      );
+      const matchedOptions: string[] = [];
+      inputParts.forEach((part) => {
+        const trimmedPart = part.trim();
+        if (!trimmedPart) return;
+        const exactMatch = currentQuestion.options.find(
+          (option) => normalize(option.name) === trimmedPart
+        );
+        if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
+          matchedOptions.push(exactMatch.name);
+        }
+      });
+      return matchedOptions.length > 0 ? matchedOptions.join(",") : voiceInput;
+    }
+
+    // For rating questions, keep your existing logic
 
     return voiceInput;
   };

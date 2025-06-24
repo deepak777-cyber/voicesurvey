@@ -152,13 +152,30 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   const matchVoiceToOption = (voiceInput: string): string => {
     if (!question.options) return voiceInput;
 
-    const normalizedInput = voiceInput
-      .toLowerCase()
-      .trim()
-      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-      .replace(/\s+/g, " ");
+    const normalize = (str: string) =>
+      str
+        .toLowerCase()
+        .normalize("NFKC") // Unicode normalization
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+        .replace(/\s+/g, " ") // collapse all whitespace
+        .trim();
 
-    console.log("Matching normalized voice input:", normalizedInput);
+    // Debug logging
+    console.log("Raw voice input:", voiceInput, Array.from(voiceInput));
+    const normalizedInput = normalize(voiceInput);
+    console.log("Normalized input:", normalizedInput);
+    console.log("Options:");
+    question.options.forEach((opt) => {
+      console.log(`- "${opt.name}" => "${normalize(opt.name)}"`);
+    });
+
+    // For single select questions
+    if (question.type === "single-select" && question.options) {
+      const exactMatch = question.options.find(
+        (option) => normalize(option.name) === normalizedInput
+      );
+      return exactMatch ? exactMatch.name : voiceInput;
+    }
 
     // For multi-select, handle multiple selections
     if (question.type === "multi-select") {
@@ -170,88 +187,16 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
       inputParts.forEach((part) => {
         const trimmedPart = part.trim();
         if (!trimmedPart) return;
-
-        // Try exact match first
         const exactMatch = question.options?.find(
-          (option) =>
-            option.name.toLowerCase().replace(/[^\w\s]/g, "") === trimmedPart
+          (option) => normalize(option.name) === trimmedPart
         );
         if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
           matchedOptions.push(exactMatch.name);
-          return;
-        }
-
-        // Try fuzzy matching with Levenshtein distance
-        const fuzzyMatches = question.options
-          ?.map((option) => ({
-            option,
-            distance: levenshteinDistance(
-              option.name.toLowerCase().replace(/[^\w\s]/g, ""),
-              trimmedPart
-            ),
-          }))
-          .sort((a, b) => a.distance - b.distance);
-
-        if (
-          fuzzyMatches &&
-          fuzzyMatches[0].distance <= Math.min(3, trimmedPart.length / 3)
-        ) {
-          const bestMatch = fuzzyMatches[0].option.name;
-          if (!matchedOptions.includes(bestMatch)) {
-            matchedOptions.push(bestMatch);
-          }
         }
       });
 
       if (matchedOptions.length > 0) {
-        console.log("Multi-select matches found:", matchedOptions);
         return matchedOptions.join(",");
-      }
-    }
-
-    // For single select questions
-    if (question.type === "single-select" && question.options) {
-      // Try exact match first
-      const exactMatch = question.options.find(
-        (option) => option.name.toLowerCase() === normalizedInput
-      );
-      if (exactMatch) {
-        return exactMatch.name;
-      }
-
-      // Try partial match if no exact match found
-      const partialMatch = question.options.find(
-        (option) =>
-          option.name.toLowerCase().includes(normalizedInput) ||
-          normalizedInput.includes(option.name.toLowerCase())
-      );
-      if (partialMatch) {
-        return partialMatch.name;
-      }
-
-      // Special handling for yes/no in Khmer
-      if (question.options.length === 2) {
-        const yesPatterns = ["បាទ", "ចាស", "yes", "yeah", "yep"];
-        const noPatterns = ["ទេ", "no", "nope"];
-
-        if (
-          yesPatterns.some((pattern) =>
-            normalizedInput.includes(pattern.toLowerCase())
-          )
-        ) {
-          return (
-            question.options.find((opt) => opt.value === 1)?.name || voiceInput
-          );
-        }
-        if (
-          noPatterns.some((pattern) =>
-            normalizedInput.includes(pattern.toLowerCase())
-          )
-        ) {
-          return (
-            question.options.find((opt) => opt.value === 0)?.name || voiceInput
-          );
-        }
       }
     }
 
