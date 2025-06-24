@@ -64,6 +64,8 @@ const Index = () => {
   const [isWaitingToRecord, setIsWaitingToRecord] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [micPermissionGranted, setMicPermissionGranted] = useState(false);
+  const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
+  const isListeningForConfirmationRef = useRef(false);
 
   const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
@@ -638,6 +640,63 @@ const Index = () => {
     } else {
       setAnswers([...answers, newAnswer]);
     }
+
+    // Confirmation logic for all devices
+    if (answer.trim() !== "") {
+      // For questions with options, only confirm if answer matches at least one valid option
+      if (
+        (currentQuestion.type === "single-select" ||
+          currentQuestion.type === "multi-select") &&
+        currentQuestion.options
+      ) {
+        let isValid = false;
+        if (currentQuestion.type === "single-select") {
+          isValid = currentQuestion.options.some(
+            (opt) => opt.name === answer.trim()
+          );
+        } else if (currentQuestion.type === "multi-select") {
+          const selectedOptions = answer
+            .split(",")
+            .map((opt) => opt.trim())
+            .filter((opt) => opt);
+          isValid = selectedOptions.some((selected) =>
+            currentQuestion.options?.some((opt) => opt.name === selected)
+          );
+        }
+        if (!isValid) {
+          setIsAwaitingConfirmation(false);
+          // Speak and toast: please try again with a valid option
+          const msg =
+            currentLanguage === "en"
+              ? "Please try again with one of the available options."
+              : "សូមព្យាយាមម្តងទៀតជាមួយជម្រើសដែលមាន។";
+          voiceService.speak(msg);
+          toast({
+            title:
+              currentLanguage === "en"
+                ? "No Valid Option Selected"
+                : "គ្មានជម្រើសត្រឹមត្រូវត្រូវបានជ្រើសរើស",
+            description: msg,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+      setIsAwaitingConfirmation(true);
+      // Stop listening before speaking confirmation
+      voiceService.stopListening();
+      const confirmText =
+        currentLanguage === "en"
+          ? `You answered: ${answer}. Do you confirm this answer?`
+          : `អ្នកបានឆ្លើយថា: ${answer}។ តើអ្នកបញ្ជាក់ចម្លើយនេះឬទេ?`;
+      // Speak confirmation, then listen for confirmation
+      (async () => {
+        await voiceService.speak(confirmText);
+        listenForConfirmation();
+      })();
+    } else {
+      setIsAwaitingConfirmation(false);
+    }
   };
 
   const getCurrentAnswer = () => {
@@ -855,8 +914,8 @@ const Index = () => {
     }
   };
 
-  const handleNext = () => {
-    if (!canProceed()) {
+  const handleNext = (force = false) => {
+    if (!force && !canProceed()) {
       const errorMessage =
         currentLanguage === "en"
           ? "Please provide an answer before proceeding."
@@ -978,6 +1037,70 @@ const Index = () => {
     setAnswers([]);
   };
 
+  // Reset confirmation state on question change
+  useEffect(() => {
+    setIsAwaitingConfirmation(false);
+  }, [currentQuestionIndex, currentLanguage]);
+
+  // Listen for voice confirmation (yes/no)
+  const listenForConfirmation = async () => {
+    if (isListeningForConfirmationRef.current || isListening) return;
+    isListeningForConfirmationRef.current = true;
+    try {
+      setIsListening(true);
+      const result = await voiceService.startListening();
+      setIsListening(false);
+      isListeningForConfirmationRef.current = false;
+      if (!result) return;
+      const normalized = result.trim().toLowerCase();
+      const yesWords =
+        currentLanguage === "en"
+          ? ["yes", "yeah", "yep", "confirm", "correct"]
+          : ["បាទ", "ចាស", "បាទចាស", "បាទ/ចាស", "បញ្ជាក់"];
+      const noWords =
+        currentLanguage === "en"
+          ? ["no", "nope", "re-record", "change", "incorrect"]
+          : ["ទេ", "មិនបញ្ជាក់", "ថតឡើងវិញ"];
+      if (yesWords.some((word) => normalized.includes(word))) {
+        setIsAwaitingConfirmation(false);
+        // Speak thank you
+        voiceService.speak(
+          currentLanguage === "en" ? "Thank you." : "សូមអរគុណ។"
+        );
+        // Auto-advance to next question after a short delay
+        setTimeout(() => {
+          handleNext(true);
+        }, 800);
+      } else if (noWords.some((word) => normalized.includes(word))) {
+        setIsAwaitingConfirmation(false);
+        handleAnswerChange("");
+        // Speak please try again, then re-read the question
+        (async () => {
+          await voiceService.speak(
+            currentLanguage === "en"
+              ? "Please try again."
+              : "សូមព្យាយាមម្តងទៀត។"
+          );
+          navigationRef.current = false; // Reset navigation flag so readQuestion works
+          setTimeout(() => {
+            readQuestion();
+          }, 800);
+        })();
+      } else {
+        // Prompt again
+        voiceService.speak(
+          currentLanguage === "en"
+            ? "Please say yes to confirm or no to re-record."
+            : "សូមនិយាយបាទ ឬ ចាស ដើម្បីបញ្ជាក់ ឬ ទេ ដើម្បីថតឡើងវិញ។"
+        );
+        setTimeout(() => listenForConfirmation(), 1200);
+      }
+    } catch (error) {
+      setIsListening(false);
+      isListeningForConfirmationRef.current = false;
+    }
+  };
+
   if (showThankYou) {
     return <ThankYou onStartNewSurvey={handleStartNewSurvey} />;
   }
@@ -1080,6 +1203,37 @@ const Index = () => {
             isWaitingToRecord={isWaitingToRecord}
             language={currentLanguage}
           />
+          {/* Confirmation UI */}
+          {getCurrentAnswer() && isAwaitingConfirmation && (
+            <div className="mt-4 flex flex-col items-center">
+              <div className="text-gray-700 mb-2">
+                {currentLanguage === "en"
+                  ? `You answered: "${getCurrentAnswer()}". Do you confirm this answer?`
+                  : `អ្នកបានឆ្លើយថា: "${getCurrentAnswer()}". តើអ្នកបញ្ជាក់ចម្លើយនេះឬទេ?`}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setIsAwaitingConfirmation(false);
+                    // Optionally, you can auto-advance here or just let user click Next
+                  }}
+                >
+                  {currentLanguage === "en" ? "Yes, I confirm" : "បាទ/ចាស"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsAwaitingConfirmation(false);
+                    handleAnswerChange("");
+                  }}
+                >
+                  {currentLanguage === "en" ? "No, re-record" : "ទេ, ថតឡើងវិញ"}
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
 
         {/* Navigation */}
@@ -1095,8 +1249,8 @@ const Index = () => {
           </Button>
 
           <Button
-            onClick={handleNext}
-            disabled={!canProceed()}
+            onClick={() => handleNext(false)}
+            disabled={!canProceed() || isAwaitingConfirmation}
             className="flex items-center gap-2"
           >
             {isLastQuestion
