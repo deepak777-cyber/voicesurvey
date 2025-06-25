@@ -41,6 +41,107 @@ function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent);
 }
 
+// Add these utility functions before the Index component
+function levenshteinDistance(str1: string, str2: string): number {
+  const track = Array(str2.length + 1)
+    .fill(null)
+    .map(() => Array(str1.length + 1).fill(null));
+  for (let i = 0; i <= str1.length; i += 1) {
+    track[0][i] = i;
+  }
+  for (let j = 0; j <= str2.length; j += 1) {
+    track[j][0] = j;
+  }
+  for (let j = 1; j <= str2.length; j += 1) {
+    for (let i = 1; i <= str1.length; i += 1) {
+      const indicator = str1[i - 1] === str2[j - 1] ? 0 : 1;
+      track[j][i] = Math.min(
+        track[j][i - 1] + 1, // deletion
+        track[j - 1][i] + 1, // insertion
+        track[j - 1][i - 1] + indicator // substitution
+      );
+    }
+  }
+  return track[str2.length][str1.length];
+}
+
+function normalizeText(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findBestMatch(
+  input: string,
+  options: string[]
+): { match: string; score: number } {
+  const normalizedInput = normalizeText(input);
+  let bestMatch = options[0];
+  let bestScore = Infinity;
+
+  options.forEach((option) => {
+    const normalizedOption = normalizeText(option);
+
+    // Try exact match first
+    if (normalizedInput === normalizedOption) {
+      bestMatch = option;
+      bestScore = 0;
+      return;
+    }
+
+    // Check if input contains the option or vice versa
+    if (
+      normalizedInput.includes(normalizedOption) ||
+      normalizedOption.includes(normalizedInput)
+    ) {
+      const score =
+        Math.abs(normalizedInput.length - normalizedOption.length) * 0.5;
+      if (score < bestScore) {
+        bestMatch = option;
+        bestScore = score;
+      }
+      return;
+    }
+
+    // Try word-by-word matching
+    const inputWords = normalizedInput.split(" ");
+    const optionWords = normalizedOption.split(" ");
+    const wordMatches = inputWords.filter((word) =>
+      optionWords.some(
+        (optWord) =>
+          levenshteinDistance(word, optWord) <=
+          Math.min(2, Math.floor(optWord.length / 3))
+      )
+    ).length;
+
+    if (wordMatches > 0) {
+      const score =
+        inputWords.length -
+        wordMatches +
+        Math.abs(inputWords.length - optionWords.length) * 0.5;
+      if (score < bestScore) {
+        bestMatch = option;
+        bestScore = score;
+      }
+      return;
+    }
+
+    // Fallback to Levenshtein distance
+    const distance = levenshteinDistance(normalizedInput, normalizedOption);
+    const score =
+      distance / Math.max(normalizedInput.length, normalizedOption.length);
+    if (score < bestScore) {
+      bestMatch = option;
+      bestScore = score;
+    }
+  });
+
+  return { match: bestMatch, score: bestScore };
+}
+
 const Index = () => {
   const [currentLanguage, setCurrentLanguage] = useState<Language>("km");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -69,6 +170,10 @@ const Index = () => {
   const [iosConfirmationMessage, setIosConfirmationMessage] = useState<
     string | null
   >(null);
+  const recordRetryCountRef = useRef(0);
+  const isRetryingRef = useRef(false);
+  const confirmationRetryCountRef = useRef(0);
+  const isConfirmationRetryingRef = useRef(false);
 
   const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
@@ -367,54 +472,164 @@ const Index = () => {
     }
   };
 
-  // Function to match voice input to multiple choice options
+  // Replace the existing matchVoiceToOption function with this enhanced version
   const matchVoiceToOption = (voiceInput: string): string => {
     if (!currentQuestion.options) return voiceInput;
 
-    const normalize = (str: string) =>
-      str
-        .toLowerCase()
-        .normalize("NFKC")
-        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
-        .replace(/\s+/g, " ")
-        .trim();
-
+    const normalize = normalizeText;
     const normalizedInput = normalize(voiceInput);
 
     // For single select questions
     if (currentQuestion.type === "single-select" && currentQuestion.options) {
-      const exactMatch = currentQuestion.options.find(
-        (option) => normalize(option.name) === normalizedInput
+      // Enhanced: Accept yes/no variants for yes/no questions with more variations
+      const yesWords =
+        currentLanguage === "en"
+          ? [
+              "yes",
+              "yeah",
+              "yep",
+              "yup",
+              "correct",
+              "right",
+              "sure",
+              "okay",
+              "confirm",
+              "affirmative",
+            ]
+          : [
+              "បាទ",
+              "ចាស",
+              "បាទចាស",
+              "បាទ/ចាស",
+              "បញ្ជាក់",
+              "ត្រឹមត្រូវ",
+              "ព្រម",
+              "យល់ព្រម",
+            ];
+
+      const noWords =
+        currentLanguage === "en"
+          ? ["no", "nope", "nah", "incorrect", "wrong", "negative"]
+          : [
+              "ទេ",
+              "មិនបញ្ជាក់",
+              "ថតឡើងវិញ",
+              "មិនត្រឹមត្រូវ",
+              "មិនព្រម",
+              "មិនយល់ព្រម",
+            ];
+
+      // Find if options are yes/no (in any language)
+      const yesOption = currentQuestion.options.find((opt) =>
+        yesWords.some((word) => normalize(opt.name) === normalize(word))
       );
-      return exactMatch ? exactMatch.name : voiceInput;
+      const noOption = currentQuestion.options.find((opt) =>
+        noWords.some((word) => normalize(opt.name) === normalize(word))
+      );
+
+      // Check for yes/no matches with fuzzy matching
+      if (
+        yesOption &&
+        yesWords.some(
+          (word) =>
+            levenshteinDistance(normalize(word), normalizedInput) <=
+            Math.min(2, Math.floor(word.length / 3))
+        )
+      ) {
+        return yesOption.name;
+      }
+      if (
+        noOption &&
+        noWords.some(
+          (word) =>
+            levenshteinDistance(normalize(word), normalizedInput) <=
+            Math.min(2, Math.floor(word.length / 3))
+        )
+      ) {
+        return noOption.name;
+      }
+
+      // For other single-select options, use fuzzy matching
+      const optionNames = currentQuestion.options.map((opt) => opt.name);
+      const { match, score } = findBestMatch(voiceInput, optionNames);
+
+      // Only accept matches with good confidence
+      const threshold = currentLanguage === "en" ? 0.4 : 0.5; // More lenient for English
+      return score <= threshold ? match : voiceInput;
     }
 
     // For multi-select questions
     if (currentQuestion.type === "multi-select" && currentQuestion.options) {
+      // Split input by common separators in both languages
       const inputParts = normalizedInput.split(
-        /\s+and\s+|\s*,\s*|\s+or\s+|\s+plus\s+|\s+និង\s+/i
+        /\s+and\s+|\s*,\s*|\s+or\s+|\s+plus\s+|\s+និង\s+|\s+ហើយ\s+|\s+រួមទាំង\s+/i
       );
       const matchedOptions: string[] = [];
+
       inputParts.forEach((part) => {
         const trimmedPart = part.trim();
         if (!trimmedPart) return;
-        const exactMatch = currentQuestion.options.find(
-          (option) => normalize(option.name) === trimmedPart
+
+        const { match, score } = findBestMatch(
+          trimmedPart,
+          currentQuestion.options!.map((opt) => opt.name)
         );
-        if (exactMatch && !matchedOptions.includes(exactMatch.name)) {
-          matchedOptions.push(exactMatch.name);
+
+        // Only accept matches with good confidence
+        const threshold = currentLanguage === "en" ? 0.4 : 0.5;
+        if (score <= threshold && !matchedOptions.includes(match)) {
+          matchedOptions.push(match);
         }
       });
+
       return matchedOptions.length > 0 ? matchedOptions.join(",") : voiceInput;
     }
-
-    // For rating questions, keep your existing logic
 
     return voiceInput;
   };
 
+  // Helper to handle retry logic
+  const handleRetry = async () => {
+    if (recordRetryCountRef.current < 1 && !isRetryingRef.current) {
+      isRetryingRef.current = true;
+      recordRetryCountRef.current += 1;
+      console.log(
+        `[VoiceSurvey] handleRetry: Incremented retryCount to: ${recordRetryCountRef.current}, set isRetrying to true`
+      );
+      await voiceService.speak(
+        currentLanguage === "en"
+          ? "Not able to capture your answer, please try again."
+          : "មិនអាចចាប់យកចម្លើយរបស់អ្នកបានទេ សូមព្យាយាមម្តងទៀត។"
+      );
+      setTimeout(() => {
+        console.log(
+          "[VoiceSurvey] handleRetry: Retrying startVoiceRecording (auto-retry)"
+        );
+        startVoiceRecording();
+      }, 800);
+    } else if (recordRetryCountRef.current >= 1) {
+      const msg =
+        currentLanguage === "en"
+          ? "Please tap the microphone and try again."
+          : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
+      toast({
+        title:
+          currentLanguage === "en" ? "No Answer Detected" : "រកមិនឃើញចម្លើយ",
+        description: msg,
+        variant: "destructive",
+      });
+      await voiceService.speak(msg);
+      isRetryingRef.current = false;
+      console.log(
+        "[VoiceSurvey] handleRetry: Max retries reached, set isRetrying to false (will reset on next question or success)"
+      );
+    }
+  };
+
   const startVoiceRecording = async () => {
-    console.log("[VoiceSurvey] startVoiceRecording called");
+    console.log(
+      `[VoiceSurvey] startVoiceRecording called, retryCount: ${recordRetryCountRef.current}, isRetrying: ${isRetryingRef.current}`
+    );
     if (!isVoiceEnabled) {
       console.log("[VoiceSurvey] Voice features are disabled");
       const errorMessage =
@@ -465,6 +680,11 @@ const Index = () => {
       const result = await voiceService.startListening();
       console.log("[VoiceSurvey] voiceService.startListening result:", result);
       if (result) {
+        recordRetryCountRef.current = 0; // Reset retry counter on success
+        isRetryingRef.current = false;
+        console.log(
+          "[VoiceSurvey] Got result, resetting retryCount to 0 and isRetrying to false"
+        );
         const matchedAnswer = matchVoiceToOption(result);
         console.log("[VoiceSurvey] Matched answer:", matchedAnswer);
         handleAnswerChange(matchedAnswer);
@@ -522,21 +742,38 @@ const Index = () => {
         }
       } else {
         console.log(
-          "[VoiceSurvey] No result returned from voiceService.startListening"
+          `[VoiceSurvey] No result, retryCount: ${recordRetryCountRef.current}, isRetrying: ${isRetryingRef.current}`
         );
+        if (isVoiceEnabled && isVoiceSupported && !isIOS()) {
+          await handleRetry();
+        } else if (isIOS()) {
+          const msg =
+            currentLanguage === "en"
+              ? "Please tap the microphone and try again."
+              : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
+          toast({
+            title:
+              currentLanguage === "en"
+                ? "No Answer Detected"
+                : "រកមិនឃើញចម្លើយ",
+            description: msg,
+            variant: "destructive",
+          });
+          await voiceService.speak(msg);
+        }
       }
     } catch (error) {
-      console.error("[VoiceSurvey] Error recording voice:", error);
+      console.log(`[VoiceSurvey] Error recording voice:`, error);
       let errorMessage =
         currentLanguage === "en"
           ? "Could not record your voice. Please try again."
           : "មិនអាចថតសំឡេងរបស់អ្នកបានទេ។ សូមព្យាយាមម្តងទៀត។";
-
       if (error instanceof Error) {
         const errorLower = error.message.toLowerCase();
         if (errorLower.includes("reset called")) {
           // Silently handle reset-triggered errors
           console.log("[VoiceSurvey] Reset called during recording");
+          setIsListening(false);
           return;
         }
         if (
@@ -594,7 +831,10 @@ const Index = () => {
 
       if (isIOS()) {
         errorMessage =
-          "Voice recording is limited on iPhone/iPad browsers. Please use the keyboard if voice does not work, or try updating your iOS version.";
+          currentLanguage === "en"
+            ? "Could not record your voice. Please try again."
+            : "មិនអាចថតសំឡេងរបស់អ្នកបានទេ។ សូមព្យាយាមម្តងទៀត។";
+        await voiceService.speak(errorMessage);
       }
 
       toast({
@@ -603,6 +843,10 @@ const Index = () => {
         variant: "destructive",
         duration: 6000,
       });
+      // Retry logic for non-iOS
+      if (isVoiceEnabled && isVoiceSupported && !isIOS()) {
+        await handleRetry();
+      }
     } finally {
       setIsListening(false);
       setIsWaitingToRecord(false);
@@ -1054,68 +1298,142 @@ const Index = () => {
     setAnswers([]);
   };
 
-  // Reset confirmation state on question change
+  // Reset confirmation state and retry counter on question change
   useEffect(() => {
     setIsAwaitingConfirmation(false);
     setIosConfirmationMessage(null);
+    recordRetryCountRef.current = 0;
+    isRetryingRef.current = false;
+    confirmationRetryCountRef.current = 0;
+    isConfirmationRetryingRef.current = false;
+    console.log(
+      "[VoiceSurvey] Reset recordRetryCountRef, isRetryingRef, confirmationRetryCountRef, isConfirmationRetryingRef to 0/false on question/language change"
+    );
   }, [currentQuestionIndex, currentLanguage]);
+
+  // Helper to handle confirmation retry logic
+  const handleConfirmationRetry = async () => {
+    if (
+      confirmationRetryCountRef.current < 1 &&
+      !isConfirmationRetryingRef.current
+    ) {
+      isConfirmationRetryingRef.current = true;
+      confirmationRetryCountRef.current += 1;
+      console.log(
+        `[VoiceSurvey] handleConfirmationRetry: Incremented confirmationRetryCount to: ${confirmationRetryCountRef.current}, set isConfirmationRetrying to true`
+      );
+      await voiceService.speak(
+        currentLanguage === "en"
+          ? "Couldn't quite get it, please confirm your answer."
+          : "មិនអាចយល់បានច្បាស់ទេ សូមបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។"
+      );
+      setTimeout(() => {
+        console.log(
+          "[VoiceSurvey] handleConfirmationRetry: Retrying listenForConfirmation (auto-retry)"
+        );
+        listenForConfirmation();
+      }, 800);
+    } else if (confirmationRetryCountRef.current >= 1) {
+      const msg =
+        currentLanguage === "en"
+          ? "Please tap to confirm your answer again."
+          : "សូមចុចដើម្បីបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។";
+      toast({
+        title:
+          currentLanguage === "en"
+            ? "Confirmation Not Understood"
+            : "មិនយល់ការបញ្ជាក់",
+        description: msg,
+        variant: "destructive",
+      });
+      await voiceService.speak(msg);
+      isConfirmationRetryingRef.current = false;
+      console.log(
+        "[VoiceSurvey] handleConfirmationRetry: Max retries reached, set isConfirmationRetrying to false (will reset on next question or success)"
+      );
+    }
+  };
 
   // Listen for voice confirmation (yes/no)
   const listenForConfirmation = async () => {
-    if (isListeningForConfirmationRef.current || isListening) return;
+    console.log("[VoiceSurvey] listenForConfirmation called");
+    console.log(
+      "[VoiceSurvey] isListeningForConfirmationRef:",
+      isListeningForConfirmationRef.current,
+      "isListening:",
+      isListening
+    );
+    if (isListeningForConfirmationRef.current || isListening) {
+      console.log("[VoiceSurvey] Blocked: already listening for confirmation");
+      return;
+    }
     isListeningForConfirmationRef.current = true;
+    setIsListening(true);
+    const normalize = (str: string) =>
+      str
+        .toLowerCase()
+        .normalize("NFKC")
+        .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    const yesWords =
+      currentLanguage === "en"
+        ? ["yes", "yeah", "yep", "confirm", "correct"]
+        : ["បាទ", "ចាស", "បាទចាស", "បាទ/ចាស", "បញ្ជាក់"];
+    const noWords =
+      currentLanguage === "en"
+        ? ["no", "nope", "incorrect"]
+        : ["ទេ", "មិនបញ្ជាក់", "ថតឡើងវិញ"];
     try {
-      setIsListening(true);
       const result = await voiceService.startListening();
+      // Always reset both flags before any retry or exit
       setIsListening(false);
       isListeningForConfirmationRef.current = false;
-      if (!result) return;
+      if (!result) {
+        if (!isVoiceEnabled || !isVoiceSupported) return;
+        // Confirmation retry logic
+        await handleConfirmationRetry();
+        return;
+      }
       const normalized = result.trim().toLowerCase();
-      const yesWords =
-        currentLanguage === "en"
-          ? ["yes", "yeah", "yep", "confirm", "correct"]
-          : ["បាទ", "ចាស", "បាទចាស", "បាទ/ចាស", "បញ្ជាក់"];
-      const noWords =
-        currentLanguage === "en"
-          ? ["no", "nope", "re-record", "change", "incorrect"]
-          : ["ទេ", "មិនបញ្ជាក់", "ថតឡើងវិញ"];
-      if (yesWords.some((word) => normalized.includes(word))) {
+      if (yesWords.some((word) => normalized.includes(normalize(word)))) {
         setIsAwaitingConfirmation(false);
-        // Speak thank you
+        confirmationRetryCountRef.current = 0;
+        isConfirmationRetryingRef.current = false;
         voiceService.speak(
           currentLanguage === "en" ? "Thank you." : "សូមអរគុណ។"
         );
-        // Auto-advance to next question after a short delay
         setTimeout(() => {
           handleNext(true);
         }, 800);
-      } else if (noWords.some((word) => normalized.includes(word))) {
+      } else if (noWords.some((word) => normalized.includes(normalize(word)))) {
         setIsAwaitingConfirmation(false);
+        confirmationRetryCountRef.current = 0;
+        isConfirmationRetryingRef.current = false;
         handleAnswerChange("");
-        // Speak please try again, then re-read the question
         (async () => {
           await voiceService.speak(
             currentLanguage === "en"
               ? "Please try again."
               : "សូមព្យាយាមម្តងទៀត។"
           );
-          navigationRef.current = false; // Reset navigation flag so readQuestion works
           setTimeout(() => {
-            readQuestion();
+            startVoiceRecording();
           }, 800);
         })();
       } else {
-        // Prompt again
-        voiceService.speak(
-          currentLanguage === "en"
-            ? "Please say yes to confirm or no to re-record."
-            : "សូមនិយាយបាទ ឬ ចាស ដើម្បីបញ្ជាក់ ឬ ទេ ដើម្បីថតឡើងវិញ។"
-        );
-        setTimeout(() => listenForConfirmation(), 1200);
+        if (!isVoiceEnabled || !isVoiceSupported) return;
+        // Confirmation retry logic
+        await handleConfirmationRetry();
+        return;
       }
     } catch (error) {
       setIsListening(false);
       isListeningForConfirmationRef.current = false;
+      if (!isVoiceEnabled || !isVoiceSupported) return;
+      // Confirmation retry logic
+      await handleConfirmationRetry();
+      return;
     }
   };
 
@@ -1253,6 +1571,7 @@ const Index = () => {
                   onClick={() => {
                     setIsAwaitingConfirmation(false);
                     handleAnswerChange("");
+                    startVoiceRecording();
                   }}
                 >
                   {currentLanguage === "en" ? "No, re-record" : "ទេ, ថតឡើងវិញ"}

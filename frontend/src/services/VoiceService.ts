@@ -480,7 +480,7 @@ export class VoiceService {
                 console.log("Silence detected, stopping recognition");
                 this.recognition.stop();
               }
-            }, 3500); // 3.5 seconds of silence before stopping
+            }, 3000); // 3.5 seconds of silence before stopping
           };
 
           this.recognition.onstart = () => {
