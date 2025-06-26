@@ -588,21 +588,31 @@ export class VoiceService {
     });
   }
 
-  public stopListening(): void {
-    try {
-      // Stop Azure STT if it's running
-      this.azureSTT.stopRecording();
+  public stopListening(): Promise<void> {
+    return new Promise((resolve) => {
+      try {
+        // Stop Azure STT if it's running
+        this.azureSTT.stopRecording();
 
-      if (this.recognition) {
-        this.recognition.onend = null; // Remove end handler before stopping
-        this.recognition.onresult = null; // Remove result handler
-        this.recognition.onerror = null; // Remove error handler
-        this.recognition.onstart = null; // Remove start handler
-        this.recognition.stop();
+        if (this.recognition) {
+          // Set up a one-time onend handler to resolve the promise
+          const originalOnEnd = this.recognition.onend;
+          this.recognition.onend = () => {
+            if (originalOnEnd) originalOnEnd();
+            resolve();
+          };
+          this.recognition.onresult = null; // Remove result handler
+          this.recognition.onerror = null; // Remove error handler
+          this.recognition.onstart = null; // Remove start handler
+          this.recognition.stop();
+        } else {
+          resolve();
+        }
+      } catch (error) {
+        console.warn("Error stopping recognition:", error);
+        resolve();
       }
-    } catch (error) {
-      console.warn("Error stopping recognition:", error);
-    }
+    });
   }
 
   public async speak(text: string): Promise<void> {

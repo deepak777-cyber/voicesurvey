@@ -1,15 +1,17 @@
-import React from 'react';
-import { Button } from '@/components/ui/button';
-import { Language, LANGUAGES } from '@/types/language';
+import React from "react";
+import { Button } from "@/components/ui/button";
+import { Language, LANGUAGES } from "@/types/language";
 
 interface LanguageSwitcherProps {
   currentLanguage: Language;
   onLanguageChange: (language: Language) => void;
+  disabled?: boolean;
 }
 
 export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
   currentLanguage,
   onLanguageChange,
+  disabled = false,
 }) => {
   return (
     <div className="flex gap-2">
@@ -20,6 +22,7 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
           size="sm"
           onClick={() => onLanguageChange(lang.language)}
           className="flex items-center gap-2"
+          disabled={disabled}
         >
           <span>{lang.flag}</span>
           <span>{lang.label}</span>
@@ -27,4 +30,4 @@ export const LanguageSwitcher: React.FC<LanguageSwitcherProps> = ({
       ))}
     </div>
   );
-}; 
+};

@@ -27,6 +27,7 @@ interface SurveyQuestionProps {
   answer: string;
   onAnswerChange: (answer: string) => void;
   isListening: boolean;
+  isActivatingMic?: boolean;
   onStartRecording: () => void;
   onStopRecording: () => void;
   voiceEnabled: boolean;
@@ -44,6 +45,7 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
   answer,
   onAnswerChange,
   isListening,
+  isActivatingMic = false,
   onStartRecording: parentStartRecording,
   onStopRecording: parentStopRecording,
   voiceEnabled,
@@ -298,33 +300,56 @@ export const SurveyQuestion: React.FC<SurveyQuestionProps> = ({
 
   const renderVoiceButton = () => {
     if (!voiceEnabled) return null;
-
-    // Always show the button when voice is enabled, regardless of platform
     return (
       <div className="flex flex-col items-center mt-4">
         <Button
-          variant={isListening ? "destructive" : "outline"}
+          variant={
+            isListening
+              ? "destructive"
+              : isActivatingMic
+              ? "secondary"
+              : "outline"
+          }
           size="lg"
           onClick={isListening ? stopRecording : startRecording}
-          disabled={isProcessing || isSpeaking}
+          disabled={isProcessing || isSpeaking || isActivatingMic}
           className={`flex items-center gap-2 transition-all duration-200 w-full sm:w-auto justify-center ${
-            isListening ? "animate-pulse bg-red-500 hover:bg-red-600" : ""
+            isListening
+              ? "animate-pulse bg-red-500 hover:bg-red-600"
+              : isActivatingMic
+              ? "animate-pulse bg-yellow-200 hover:bg-yellow-300"
+              : ""
           }`}
         >
           {isListening ? <MicOff size={20} /> : <Mic size={20} />}
-          {isProcessing
-            ? t("Processing...", "កំពុងដំណើរការ...")
-            : isSpeaking
-            ? t("Please wait...", "សូមរង់ចាំ...")
-            : isListening
-            ? t("Tap to Stop", "ចុចដើម្បីបញ្ឈប់")
-            : t("Tap to Record", "ចុចដើម្បីថត")}
+          {isProcessing ? (
+            t("Processing...", "កំពុងដំណើរការ...")
+          ) : isSpeaking ? (
+            t("Please wait...", "សូមរង់ចាំ...")
+          ) : isActivatingMic ? (
+            <>
+              <span className="animate-spin mr-2">⏳</span>
+              {t("Activating microphone...", "កំពុងបើកមីក្រូហ្វូន...")}
+            </>
+          ) : isListening ? (
+            t("Tap to Stop", "ចុចដើម្បីបញ្ឈប់")
+          ) : (
+            t("Tap to Record", "ចុចដើម្បីថត")
+          )}
         </Button>
         {isListening && (
           <div className="mt-4 text-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-red-50 text-red-700 rounded-full animate-pulse">
               <div className="w-2 h-2 bg-red-500 rounded-full"></div>
               {t("Recording... Tap to stop", "កំពុងថត... ចុចដើម្បីបញ្ឈប់")}
+            </div>
+          </div>
+        )}
+        {isActivatingMic && (
+          <div className="mt-4 text-center">
+            <div className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-50 text-yellow-700 rounded-full animate-pulse">
+              <div className="w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
+              {t("Activating microphone...", "កំពុងបើកមីក្រូហ្វូន...")}
             </div>
           </div>
         )}

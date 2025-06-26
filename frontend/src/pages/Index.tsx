@@ -174,6 +174,14 @@ const Index = () => {
   const isRetryingRef = useRef(false);
   const confirmationRetryCountRef = useRef(0);
   const isConfirmationRetryingRef = useRef(false);
+  const [isActivatingMic, setIsActivatingMic] = useState(false);
+  const [isLanguageSwitcherDisabled, setIsLanguageSwitcherDisabled] =
+    useState(true);
+
+  const answersRef = useRef(answers);
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   const surveyQuestions = getSurveyQuestions(currentLanguage);
   const currentQuestion = surveyQuestions[currentQuestionIndex];
@@ -359,6 +367,12 @@ const Index = () => {
   const readQuestion = async (manual: boolean = false) => {
     if (!isVoiceEnabled) return;
 
+    // If currently listening, stop listening before speaking
+    if (isListening) {
+      await voiceService.stopListening();
+      setIsListening(false);
+    }
+
     console.log(
       "Reading question. navigationRef:",
       navigationRef.current,
@@ -428,18 +442,8 @@ const Index = () => {
 
       await voiceService.speak(textToRead);
 
-      // Only check navigation ref for automatic calls, not manual ones
-      if (!manual && navigationRef.current) {
-        console.log("Navigation occurred during speech, skipping auto-record");
-        setIsWaitingToRecord(false);
-        return;
-      }
-
-      console.log("Finished speaking. navigationRef:", navigationRef.current);
-
-      // Android: auto-record after reading. iOS: require manual tap.
+      // After speaking, always auto-record for Android/desktop (not iOS)
       if (!isIOS()) {
-        // Android/other: auto-record
         setIsWaitingToRecord(true);
         const toastMessage =
           currentLanguage === "en"
@@ -453,7 +457,10 @@ const Index = () => {
         const timeoutId = setTimeout(() => {
           if (isVoiceEnabled) {
             setIsWaitingToRecord(false);
-            startVoiceRecording();
+            // Add a short delay to ensure isListening is false
+            setTimeout(() => {
+              startVoiceRecording();
+            }, 100);
           } else {
             setIsWaitingToRecord(false);
           }
@@ -462,7 +469,7 @@ const Index = () => {
         setAutoRecordTimeoutId(timeoutId);
       } else {
         // iOS: show tap-to-record button, do not auto-record
-        setIsWaitingToRecord(true); // This will show the button in the UI
+        setIsWaitingToRecord(true);
       }
     } catch (error) {
       console.error("Speech error:", error);
@@ -589,44 +596,46 @@ const Index = () => {
   };
 
   // Helper to handle retry logic
-  const handleRetry = async () => {
-    if (recordRetryCountRef.current < 1 && !isRetryingRef.current) {
-      isRetryingRef.current = true;
-      recordRetryCountRef.current += 1;
-      console.log(
-        `[VoiceSurvey] handleRetry: Incremented retryCount to: ${recordRetryCountRef.current}, set isRetrying to true`
-      );
-      await voiceService.speak(
-        currentLanguage === "en"
-          ? "Not able to capture your answer, please try again."
-          : "មិនអាចចាប់យកចម្លើយរបស់អ្នកបានទេ សូមព្យាយាមម្តងទៀត។"
-      );
-      setTimeout(() => {
-        console.log(
-          "[VoiceSurvey] handleRetry: Retrying startVoiceRecording (auto-retry)"
-        );
-        startVoiceRecording();
-      }, 800);
-    } else if (recordRetryCountRef.current >= 1) {
-      const msg =
-        currentLanguage === "en"
-          ? "Please tap the microphone and try again."
-          : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
-      toast({
-        title:
-          currentLanguage === "en" ? "No Answer Detected" : "រកមិនឃើញចម្លើយ",
-        description: msg,
-        variant: "destructive",
-      });
-      await voiceService.speak(msg);
-      isRetryingRef.current = false;
-      console.log(
-        "[VoiceSurvey] handleRetry: Max retries reached, set isRetrying to false (will reset on next question or success)"
-      );
-    }
-  };
+  // const handleRetry = async () => {
+  //   if (recordRetryCountRef.current < 1 && !isRetryingRef.current) {
+  //     isRetryingRef.current = true;
+  //     recordRetryCountRef.current += 1;
+  //     console.log(`[VoiceSurvey] handleRetry: Incremented retryCount to: ${recordRetryCountRef.current}, set isRetrying to true`);
+  //     await voiceService.speak(
+  //       currentLanguage === "en"
+  //         ? "Not able to capture your answer, please try again."
+  //         : "មិនអាចចាប់យកចម្លើយរបស់អ្នកបានទេ សូមព្យាយាមម្តងទៀត។"
+  //     );
+  //     setTimeout(() => {
+  //       console.log('[VoiceSurvey] handleRetry: Retrying startVoiceRecording (auto-retry)');
+  //       startVoiceRecording();
+  //     }, 800);
+  //   } else if (recordRetryCountRef.current >= 1) {
+  //     const msg =
+  //       currentLanguage === "en"
+  //         ? "Please tap the microphone and try again."
+  //         : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
+  //     toast({
+  //       title:
+  //         currentLanguage === "en"
+  //           ? "No Answer Detected"
+  //           : "រកមិនឃើញចម្លើយ",
+  //       description: msg,
+  //       variant: "destructive",
+  //     });
+  //     await voiceService.speak(msg);
+  //     isRetryingRef.current = false;
+  //     console.log('[VoiceSurvey] handleRetry: Max retries reached, set isRetrying to false (will reset on next question or success)');
+  //   }
+  // };
 
   const startVoiceRecording = async () => {
+    if (showThankYou) {
+      console.log(
+        "[VoiceSurvey] Blocked: survey is complete, not starting recording"
+      );
+      return;
+    }
     console.log(
       `[VoiceSurvey] startVoiceRecording called, retryCount: ${recordRetryCountRef.current}, isRetrying: ${isRetryingRef.current}`
     );
@@ -675,8 +684,10 @@ const Index = () => {
     }
 
     try {
+      setIsActivatingMic(true);
+      await new Promise((res) => setTimeout(res, 400));
       setIsListening(true);
-      console.log("[VoiceSurvey] Calling voiceService.startListening()");
+      setIsActivatingMic(false);
       const result = await voiceService.startListening();
       console.log("[VoiceSurvey] voiceService.startListening result:", result);
       if (result) {
@@ -745,20 +756,24 @@ const Index = () => {
           `[VoiceSurvey] No result, retryCount: ${recordRetryCountRef.current}, isRetrying: ${isRetryingRef.current}`
         );
         if (isVoiceEnabled && isVoiceSupported && !isIOS()) {
-          await handleRetry();
-        } else if (isIOS()) {
+          // await handleRetry();
+          // Instead, just show error and let user tap mic again
           const msg =
             currentLanguage === "en"
               ? "Please tap the microphone and try again."
               : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
           toast({
-            title:
-              currentLanguage === "en"
-                ? "No Answer Detected"
-                : "រកមិនឃើញចម្លើយ",
+            title: currentLanguage === "en" ? "Recording Error" : "កំហុសការថត",
             description: msg,
             variant: "destructive",
+            duration: 6000,
           });
+          await voiceService.speak(msg);
+        } else if (isIOS()) {
+          const msg =
+            currentLanguage === "en"
+              ? "Could not record your voice. Please try again."
+              : "មិនអាចថតសំឡេងរបស់អ្នកបានទេ។ សូមព្យាយាមម្តងទៀត។";
           await voiceService.speak(msg);
         }
       }
@@ -830,11 +845,11 @@ const Index = () => {
       }
 
       if (isIOS()) {
-        errorMessage =
+        const msg =
           currentLanguage === "en"
             ? "Could not record your voice. Please try again."
             : "មិនអាចថតសំឡេងរបស់អ្នកបានទេ។ សូមព្យាយាមម្តងទៀត។";
-        await voiceService.speak(errorMessage);
+        await voiceService.speak(msg);
       }
 
       toast({
@@ -845,7 +860,19 @@ const Index = () => {
       });
       // Retry logic for non-iOS
       if (isVoiceEnabled && isVoiceSupported && !isIOS()) {
-        await handleRetry();
+        // await handleRetry();
+        // Instead, just show error and let user tap mic again
+        const msg =
+          currentLanguage === "en"
+            ? "Please tap the microphone and try again."
+            : "សូមចុចលើរូបមីក្រូហ្វូនហើយព្យាយាមម្តងទៀត។";
+        toast({
+          title: currentLanguage === "en" ? "Recording Error" : "កំហុសការថត",
+          description: msg,
+          variant: "destructive",
+          duration: 6000,
+        });
+        await voiceService.speak(msg);
       }
     } finally {
       setIsListening(false);
@@ -1087,11 +1114,15 @@ const Index = () => {
   const handleSubmit = async () => {
     console.log("Submitting answers:", answers);
 
+    const currentAnswers = answersRef.current;
+    console.log("Submitting answers:", currentAnswers);
+
     // Validate required questions
     const missingRequired = surveyQuestions
       .filter((q) => q.required)
       .filter(
-        (q) => !answers.find((a) => a.questionId === q.id && a.answer.trim())
+        (q) =>
+          !currentAnswers.find((a) => a.questionId === q.id && a.answer.trim())
       );
 
     if (missingRequired.length > 0) {
@@ -1109,7 +1140,7 @@ const Index = () => {
       return;
     }
 
-    const formattedResponses = formatResponses(answers);
+    const formattedResponses = formatResponses(currentAnswers);
     const startTime =
       localStorage.getItem("startTime") || new Date().toISOString();
 
@@ -1191,35 +1222,14 @@ const Index = () => {
     }
 
     console.log("Next clicked. Setting navigation flags");
-    // Set navigation flags
-    navigationRef.current = true;
-    setHasNavigated(true);
-    setIsWaitingToRecord(false);
-
-    // Clear any pending auto-record timeout
-    if (autoRecordTimeoutRef.current) {
-      console.log("Clearing timeout from ref in handleNext");
-      clearTimeout(autoRecordTimeoutRef.current);
-      autoRecordTimeoutRef.current = null;
-    }
-    if (autoRecordTimeoutId) {
-      console.log("Clearing timeout from state in handleNext");
-      clearTimeout(autoRecordTimeoutId);
-      setAutoRecordTimeoutId(null);
-    }
-
-    // Stop all voice activities
-    voiceService.stopListening();
-    voiceService.stopSpeaking();
-    voiceService.reset();
-    setIsListening(false);
-    setIsSpeaking(false);
+    cleanupBeforeNavigation();
 
     saveIncompleteResponse();
 
     // Add a small delay before changing the question
     setTimeout(() => {
       if (isLastQuestion) {
+        cleanupBeforeNavigation();
         handleSubmit();
       } else {
         setCurrentQuestionIndex(currentQuestionIndex + 1);
@@ -1230,29 +1240,7 @@ const Index = () => {
   const handlePrevious = () => {
     if (!isFirstQuestion) {
       console.log("Previous clicked. Setting navigation flags");
-      // Set navigation flags
-      navigationRef.current = true;
-      setHasNavigated(true);
-      setIsWaitingToRecord(false);
-
-      // Clear any pending auto-record timeout
-      if (autoRecordTimeoutRef.current) {
-        console.log("Clearing timeout from ref in handlePrevious");
-        clearTimeout(autoRecordTimeoutRef.current);
-        autoRecordTimeoutRef.current = null;
-      }
-      if (autoRecordTimeoutId) {
-        console.log("Clearing timeout from state in handlePrevious");
-        clearTimeout(autoRecordTimeoutId);
-        setAutoRecordTimeoutId(null);
-      }
-
-      // Stop all voice activities
-      voiceService.stopListening();
-      voiceService.stopSpeaking();
-      voiceService.reset();
-      setIsListening(false);
-      setIsSpeaking(false);
+      cleanupBeforeNavigation();
 
       // Add a small delay before changing the question
       setTimeout(() => {
@@ -1306,56 +1294,23 @@ const Index = () => {
     isRetryingRef.current = false;
     confirmationRetryCountRef.current = 0;
     isConfirmationRetryingRef.current = false;
+    isListeningForConfirmationRef.current = false;
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsWaitingToRecord(false);
     console.log(
-      "[VoiceSurvey] Reset recordRetryCountRef, isRetryingRef, confirmationRetryCountRef, isConfirmationRetryingRef to 0/false on question/language change"
+      "[VoiceSurvey] Reset all flags/counters on question/language change"
     );
   }, [currentQuestionIndex, currentLanguage]);
 
-  // Helper to handle confirmation retry logic
-  const handleConfirmationRetry = async () => {
-    if (
-      confirmationRetryCountRef.current < 1 &&
-      !isConfirmationRetryingRef.current
-    ) {
-      isConfirmationRetryingRef.current = true;
-      confirmationRetryCountRef.current += 1;
-      console.log(
-        `[VoiceSurvey] handleConfirmationRetry: Incremented confirmationRetryCount to: ${confirmationRetryCountRef.current}, set isConfirmationRetrying to true`
-      );
-      await voiceService.speak(
-        currentLanguage === "en"
-          ? "Couldn't quite get it, please confirm your answer."
-          : "មិនអាចយល់បានច្បាស់ទេ សូមបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។"
-      );
-      setTimeout(() => {
-        console.log(
-          "[VoiceSurvey] handleConfirmationRetry: Retrying listenForConfirmation (auto-retry)"
-        );
-        listenForConfirmation();
-      }, 800);
-    } else if (confirmationRetryCountRef.current >= 1) {
-      const msg =
-        currentLanguage === "en"
-          ? "Please tap to confirm your answer again."
-          : "សូមចុចដើម្បីបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។";
-      toast({
-        title:
-          currentLanguage === "en"
-            ? "Confirmation Not Understood"
-            : "មិនយល់ការបញ្ជាក់",
-        description: msg,
-        variant: "destructive",
-      });
-      await voiceService.speak(msg);
-      isConfirmationRetryingRef.current = false;
-      console.log(
-        "[VoiceSurvey] handleConfirmationRetry: Max retries reached, set isConfirmationRetrying to false (will reset on next question or success)"
-      );
-    }
-  };
-
   // Listen for voice confirmation (yes/no)
   const listenForConfirmation = async () => {
+    if (showThankYou) {
+      console.log(
+        "[VoiceSurvey] Blocked: survey is complete, not starting confirmation listening"
+      );
+      return;
+    }
     console.log("[VoiceSurvey] listenForConfirmation called");
     console.log(
       "[VoiceSurvey] isListeningForConfirmationRef:",
@@ -1368,7 +1323,13 @@ const Index = () => {
       return;
     }
     isListeningForConfirmationRef.current = true;
+    setIsActivatingMic(true);
+    await new Promise((res) => setTimeout(res, 400));
     setIsListening(true);
+    setIsActivatingMic(false);
+    console.log(
+      "[VoiceSurvey] Waiting 400ms before starting voiceService.startListening() for confirmation"
+    );
     const normalize = (str: string) =>
       str
         .toLowerCase()
@@ -1392,7 +1353,21 @@ const Index = () => {
       if (!result) {
         if (!isVoiceEnabled || !isVoiceSupported) return;
         // Confirmation retry logic
-        await handleConfirmationRetry();
+        // await handleConfirmationRetry();
+        // Instead, just show error and let user tap to confirm again
+        const msg =
+          currentLanguage === "en"
+            ? "Please tap to confirm your answer again."
+            : "សូមចុចដើម្បីបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។";
+        toast({
+          title:
+            currentLanguage === "en"
+              ? "Confirmation Not Understood"
+              : "មិនយល់ការបញ្ជាក់",
+          description: msg,
+          variant: "destructive",
+        });
+        await voiceService.speak(msg);
         return;
       }
       const normalized = result.trim().toLowerCase();
@@ -1404,7 +1379,12 @@ const Index = () => {
           currentLanguage === "en" ? "Thank you." : "សូមអរគុណ។"
         );
         setTimeout(() => {
-          handleNext(true);
+          if (isLastQuestion) {
+            cleanupBeforeNavigation();
+            handleSubmit();
+          } else {
+            handleNext(true);
+          }
         }, 800);
       } else if (noWords.some((word) => normalized.includes(normalize(word)))) {
         setIsAwaitingConfirmation(false);
@@ -1424,17 +1404,75 @@ const Index = () => {
       } else {
         if (!isVoiceEnabled || !isVoiceSupported) return;
         // Confirmation retry logic
-        await handleConfirmationRetry();
+        // await handleConfirmationRetry();
+        // Instead, just show error and let user tap to confirm again
+        const msg =
+          currentLanguage === "en"
+            ? "Please tap to confirm your answer again."
+            : "សូមចុចដើម្បីបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។";
+        toast({
+          title:
+            currentLanguage === "en"
+              ? "Confirmation Not Understood"
+              : "មិនយល់ការបញ្ជាក់",
+          description: msg,
+          variant: "destructive",
+        });
+        await voiceService.speak(msg);
         return;
       }
     } catch (error) {
       setIsListening(false);
+      setIsActivatingMic(false);
       isListeningForConfirmationRef.current = false;
       if (!isVoiceEnabled || !isVoiceSupported) return;
       // Confirmation retry logic
-      await handleConfirmationRetry();
+      // await handleConfirmationRetry();
+      // Instead, just show error and let user tap to confirm again
+      const msg =
+        currentLanguage === "en"
+          ? "Please tap to confirm your answer again."
+          : "សូមចុចដើម្បីបញ្ជាក់ចម្លើយរបស់អ្នកម្តងទៀត។";
+      toast({
+        title:
+          currentLanguage === "en"
+            ? "Confirmation Not Understood"
+            : "មិនយល់ការបញ្ជាក់",
+        description: msg,
+        variant: "destructive",
+      });
+      await voiceService.speak(msg);
       return;
     }
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => setIsLanguageSwitcherDisabled(false), 2000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const cleanupBeforeNavigation = () => {
+    console.log("Performing cleanup before navigation");
+    navigationRef.current = true;
+    setHasNavigated(true);
+    setIsWaitingToRecord(false);
+
+    if (autoRecordTimeoutRef.current) {
+      console.log("Clearing timeout from ref in cleanup");
+      clearTimeout(autoRecordTimeoutRef.current);
+      autoRecordTimeoutRef.current = null;
+    }
+    if (autoRecordTimeoutId) {
+      console.log("Clearing timeout from state in cleanup");
+      clearTimeout(autoRecordTimeoutId);
+      setAutoRecordTimeoutId(null);
+    }
+
+    voiceService.stopListening();
+    voiceService.stopSpeaking();
+    voiceService.reset();
+    setIsListening(false);
+    setIsSpeaking(false);
   };
 
   if (showThankYou) {
@@ -1467,6 +1505,7 @@ const Index = () => {
           <LanguageSwitcher
             currentLanguage={currentLanguage}
             onLanguageChange={handleLanguageChange}
+            disabled={isLanguageSwitcherDisabled}
           />
         </div>
 
@@ -1531,6 +1570,7 @@ const Index = () => {
             answer={getCurrentAnswer()}
             onAnswerChange={handleAnswerChange}
             isListening={isListening}
+            isActivatingMic={isActivatingMic}
             onStartRecording={startVoiceRecording}
             onStopRecording={stopVoiceRecording}
             voiceEnabled={isVoiceEnabled}
