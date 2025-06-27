@@ -47,4 +47,14 @@ router.post("/save", async (req, res) => {
   }
 });
 
+router.get("/responses", async (req, res) => {
+  try {   
+    const responses = await SurveyResponse.find().lean();
+    res.status(200).json(responses);
+  } catch (error) {
+    console.error("Error fetching responses:", error);
+    res.status(500).json({ error: "Failed to fetch survey responses." });
+  } 
+});
+
 module.exports = router;

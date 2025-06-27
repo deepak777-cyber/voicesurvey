@@ -6,11 +6,13 @@ const mongoose = require('mongoose');
 console.log("MONGO_URI from .env:", process.env.MONGO_URI); // TEMP DEBUG
 
 const surveyRoutes = require('./routes/surveyRoutes');
+const auth = require("./routes/auth");
 const app = express();
 
-app.use(cors());
+app.use(cors());  
 app.use(express.json());
 app.use('/api/survey', surveyRoutes);
+app.use('/api/auth', auth);
 
 app.get('/', (req, res) => {
   res.send('Welcome to the Survey API');

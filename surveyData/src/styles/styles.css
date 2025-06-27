@@ -1,0 +1,147 @@
+/* styles.css */
+
+/* Reset and base styles */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f4f6f9;
+  color: #333;
+}
+
+/* ================= LOGIN PAGE ================ */
+.login-container {
+  max-width: 400px;
+  margin: 5vh auto;
+  padding: 30px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+}
+
+.login-container h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.login-form label {
+  font-weight: 500;
+  display: block;
+  margin-bottom: 5px;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+}
+
+.login-form button {
+  width: 100%;
+  padding: 12px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.login-form button:hover {
+  background-color: #0056b3;
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    margin: 2vh 10px;
+    padding: 20px;
+  }
+}
+
+/* ================= TABLE VIEW ================ */
+
+.table-container {
+  padding: 30px 20px;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.table-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.05);
+}
+
+.data-table th, .data-table td {
+  padding: 10px 15px;
+  text-align: left;
+  border: 1px solid #ddd;
+}
+
+.data-table th {
+  background-color: #007bff;
+  color: #fff;
+  font-weight: 600;
+}
+
+.data-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.download-btn {
+  margin-bottom: 15px;
+  padding: 10px 20px;
+  background: #28a745;
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.download-btn:hover {
+  background: #218838;
+}
+
+.table-scroll {
+  max-height: 400px;     /* 💡 Adjust height as needed */
+  overflow-x: auto;        /* Enables both horizontal and vertical scrolling */
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+/* Keep this for wide tables on small screens */
+.data-table {
+  min-width: 600px;
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 15px;
+  text-align: left;
+  border: 1px solid #ddd;
+}
+
+.data-table th {
+  background-color: #007bff;
+  color: #fff;
+  font-weight: 600;
+  position: sticky;
+  top: 0;                 /* 💡 Keeps headers visible when scrolling vertically */
+  z-index: 2;
+}
+
+.data-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
