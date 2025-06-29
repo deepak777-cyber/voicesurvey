@@ -5,6 +5,9 @@ const SurveyResponse = require("../models/SurveyResponse");
 router.post("/save", async (req, res) => {
   try {
     console.log("Received survey data:", req.body); // Debug log
+    // Get the max respid in the collection
+    const lastEntry = await SurveyResponse.findOne().sort({ respid: -1 }).select("respid");
+    const nextRespid = lastEntry?.respid ? lastEntry.respid + 1 : 1;
 
     // Extract system fields
     const {
@@ -20,6 +23,7 @@ router.post("/save", async (req, res) => {
 
     // Create response data object
     const responseData = {
+      respid: nextRespid,
       unique_id,
       sys_start_time,
       sys_end_time: sys_end_time || new Date(),
@@ -48,13 +52,13 @@ router.post("/save", async (req, res) => {
 });
 
 router.get("/responses", async (req, res) => {
-  try {   
-    const responses = await SurveyResponse.find().lean();
+  try {
+    const responses = await SurveyResponse.find().select("-__v").lean();
     res.status(200).json(responses);
   } catch (error) {
     console.error("Error fetching responses:", error);
     res.status(500).json({ error: "Failed to fetch survey responses." });
-  } 
+  }
 });
 
 module.exports = router;

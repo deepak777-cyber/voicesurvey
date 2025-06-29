@@ -3,18 +3,21 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import '../styles/styles.css'
+import config from "../config";
 
 const SurveyDataTable = () => {
     const [responses, setResponses] = useState([]);
 
     useEffect(() => {
-        axios.get("http://localhost:5000/api/survey/responses")
+        axios.get(`${config.API_BASE_URL}/api/survey/responses`)
             .then((res) => setResponses(res.data))
             .catch((err) => console.error("Error fetching:", err));
     }, []);
 
     const downloadExcel = () => {
-        const worksheet = XLSX.utils.json_to_sheet(responses);
+        // const worksheet = XLSX.utils.json_to_sheet(responses);
+        const cleanedResponses = responses.map(({ __v, ...rest }) => rest);
+        const worksheet = XLSX.utils.json_to_sheet(cleanedResponses);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "SurveyData");
         const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
@@ -30,7 +33,8 @@ const SurveyDataTable = () => {
 
     return (
         <div className="table-container">
-            {/* <h2 className="table-header">Survey Responses</h2> */}
+            <h2 className="table-header">Survey Responses</h2>
+
             <button className="download-btn" onClick={downloadExcel}>
                 Download as Excel
             </button>
@@ -53,6 +57,7 @@ const SurveyDataTable = () => {
             </div>
         </div>
     );
+
 
 
 };

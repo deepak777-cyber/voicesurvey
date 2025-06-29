@@ -2,6 +2,11 @@ const mongoose = require("mongoose");
 
 const responseSchema = new mongoose.Schema(
   {
+    respid: {
+      type: Number,
+      required: true,
+      unique: true, // optional: helps prevent duplicates
+    },
     unique_id: String,
     sys_start_time: Date,
     sys_end_time: Date,

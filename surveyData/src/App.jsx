@@ -1,17 +1,22 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./components/Login";
 import Dashboard from "./pages/Dashboard";
 
 const App = () => {
-  const isAuth = localStorage.getItem("auth") === "true";
+  const [isAuth, setIsAuth] = useState(false);
+
+  useEffect(() => {
+    const authStatus = localStorage.getItem("auth") === "true";
+    setIsAuth(authStatus);
+  }, []);
 
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<Login setIsAuth={setIsAuth} />} />
         <Route
-          path="/dashboard"
+          path="/response"
           element={isAuth ? <Dashboard /> : <Navigate to="/" />}
         />
       </Routes>

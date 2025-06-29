@@ -50,7 +50,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_1",
+        id: "4",
         type: "single-select",
         question: "Do you find Customer Support valuable?",
         options: [
@@ -60,7 +60,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_2",
+        id: "5",
         type: "single-select",
         question: "Do you find Easy to Use valuable?",
         options: [
@@ -70,7 +70,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_3",
+        id: "6",
         type: "single-select",
         question: "Do you find Good Value valuable?",
         options: [
@@ -80,7 +80,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_4",
+        id: "7",
         type: "single-select",
         question: "Do you find Fast Delivery valuable?",
         options: [
@@ -90,7 +90,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_5",
+        id: "8",
         type: "single-select",
         question: "Do you find Quality Products valuable?",
         options: [
@@ -100,13 +100,13 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "5",
+        id: "9",
         type: "text",
         question: "What could we do to improve our service?",
         required: false,
       },
       {
-        id: "6",
+        id: "10",
         type: "single-select",
         question: "How did you hear about us?",
         options: [
@@ -154,7 +154,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_1",
+        id: "4",
         type: "single-select",
         question: "តើអ្នកគិតថាសេវាផ្តល់ជំនួយអតិថិជនមានតម្លៃឬទេ?",
         options: [
@@ -164,7 +164,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_2",
+        id: "5",
         type: "single-select",
         question: "តើអ្នកគិតថាការប្រើប្រាស់ងាយស្រួលមានតម្លៃឬទេ?",
         options: [
@@ -174,7 +174,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_3",
+        id: "6",
         type: "single-select",
         question: "តើអ្នកគិតថាតម្លៃល្អមានតម្លៃឬទេ?",
         options: [
@@ -184,7 +184,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_4",
+        id: "7",
         type: "single-select",
         question: "តើអ្នកគិតថាការដឹកជញ្ជូនលឿនមានតម្លៃឬទេ?",
         options: [
@@ -194,7 +194,7 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "4_5",
+        id: "8",
         type: "single-select",
         question: "តើអ្នកគិតថាផលិតផលដែលមានគុណភាពមានតម្លៃឬទេ?",
         options: [
@@ -204,13 +204,13 @@ export const getSurveyQuestions = (language: Language): Question[] => {
         required: true,
       },
       {
-        id: "5",
+        id: "9",
         type: "text",
         question: "តើយើងអាចធ្វើអ្វីដើម្បីធ្វើឲ្យសេវាកម្មរបស់យើងប្រសើរឡើង?",
         required: false,
       },
       {
-        id: "6",
+        id: "10",
         type: "single-select",
         question: "តើអ្នកបានដឹងអំពីយើងដោយរបៀបណា?",
         options: [
