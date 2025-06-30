@@ -4,12 +4,16 @@ import Login from "./components/Login";
 import Dashboard from "./pages/Dashboard";
 
 const App = () => {
-  const [isAuth, setIsAuth] = useState(false);
+  const [isAuth, setIsAuth] = useState(null); // Initially null to show "loading" state
 
   useEffect(() => {
     const authStatus = localStorage.getItem("auth") === "true";
     setIsAuth(authStatus);
   }, []);
+
+  if (isAuth === null) {
+    return <div>Loading...</div>; // Or a spinner, loader component
+  }
 
   return (
     <Router>
@@ -17,7 +21,7 @@ const App = () => {
         <Route path="/" element={<Login setIsAuth={setIsAuth} />} />
         <Route
           path="/response"
-          element={isAuth ? <Dashboard /> : <Navigate to="/" />}
+          element={isAuth ? <Dashboard /> : <Navigate to="/" replace />}
         />
       </Routes>
     </Router>

@@ -12,6 +12,8 @@ const app = express();
 
 // ✅ Define allowed frontend origins
 const allowedOrigins = [
+  "http://localhost:5173", // Allow Vite dev server
+  "http://localhost:8080",
   "https://chhatsurvey.excavateservices.com",
   "https://testingchhatsurvey.excavateservices.com"
 ];

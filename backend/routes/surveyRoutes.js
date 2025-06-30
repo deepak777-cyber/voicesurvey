@@ -4,47 +4,72 @@ const SurveyResponse = require("../models/SurveyResponse");
 
 router.post("/save", async (req, res) => {
   try {
-    console.log("Received survey data:", req.body); // Debug log
-    // Get the max respid in the collection
-    const lastEntry = await SurveyResponse.findOne().sort({ respid: -1 }).select("respid");
-    const nextRespid = lastEntry?.respid ? lastEntry.respid + 1 : 1;
-
-    // Extract system fields
     const {
       unique_id,
       sys_start_time,
       sys_end_time,
       sys_device,
       survey_status,
-      elapsed_time,
+      elapsed_time_in_second,
       language,
-      ...questionResponses // This will contain all the q1, q2, q4_1, q4_2, etc. fields
+      ...questionResponses
     } = req.body;
 
-    // Create response data object
-    const responseData = {
-      respid: nextRespid,
-      unique_id,
-      sys_start_time,
-      sys_end_time: sys_end_time || new Date(),
-      sys_device,
-      survey_status: survey_status || "completed",
-      elapsed_time,
-      language,
-      ...questionResponses, // All question responses including numbered multi-select answers
-    };
+    if (!unique_id) {
+      return res.status(400).json({ error: "unique_id is required" });
+    }
 
-    console.log("Saving survey data:", responseData); // Debug log
+    // 🔍 Step 1: Check if a record with this unique_id already exists
+    let existing = await SurveyResponse.findOne({ unique_id });
 
-    const newResponse = new SurveyResponse(responseData);
-    const savedResponse = await newResponse.save();
+    if (existing) {
+      // ✅ Step 2: Update the existing response (merge new question responses)
+      const updated = await SurveyResponse.findOneAndUpdate(
+        { unique_id },
+        {
+          $set: {
+            ...questionResponses,
+            sys_end_time: sys_end_time || existing.sys_end_time,
+            sys_device,
+            survey_status: survey_status || existing.survey_status,
+            elapsed_time_in_second,
+            language,
+          },
+        },
+        { new: true }
+      );
 
-    console.log("Saved survey response:", savedResponse); // Debug log
+      return res.status(200).json({
+        message: "Survey response updated.",
+        savedData: updated,
+      });
+    } else {
+      // 🆕 Step 3: Create a new response with a new respid
+      const lastEntry = await SurveyResponse.findOne()
+        .sort({ respid: -1 })
+        .select("respid");
 
-    res.status(201).json({
-      message: "Survey saved successfully.",
-      savedData: savedResponse,
-    });
+      const nextRespid = lastEntry?.respid ? lastEntry.respid + 1 : 1;
+
+      const newResponse = new SurveyResponse({
+        respid: nextRespid,
+        unique_id,
+        sys_start_time,
+        sys_end_time: sys_end_time || new Date(),
+        sys_device,
+        survey_status: survey_status || "incomplete",
+        elapsed_time_in_second,
+        language,
+        ...questionResponses,
+      });
+
+      const savedResponse = await newResponse.save();
+
+      return res.status(201).json({
+        message: "Survey response saved.",
+        savedData: savedResponse,
+      });
+    }
   } catch (error) {
     console.error("Error saving survey:", error);
     res.status(500).json({ error: "Failed to save survey response." });

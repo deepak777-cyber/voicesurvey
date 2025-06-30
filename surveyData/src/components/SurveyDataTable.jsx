@@ -10,26 +10,45 @@ const SurveyDataTable = () => {
 
     useEffect(() => {
         axios.get(`${config.API_BASE_URL}/api/survey/responses`)
-            .then((res) => setResponses(res.data))
+            .then((res) => {
+                const cleaned = res.data.map(({ _id, __v, updatedAt, ...rest }) => {
+                    const { respid, createdAt, ...others } = rest;
+                    return {
+                        respid,
+                        createdAt,
+                        LastUpdate: updatedAt,
+                        ...others,
+                    };
+                });
+                setResponses(cleaned);
+            })
             .catch((err) => console.error("Error fetching:", err));
     }, []);
 
     const downloadExcel = () => {
-        // const worksheet = XLSX.utils.json_to_sheet(responses);
-        const cleanedResponses = responses.map(({ __v, ...rest }) => rest);
-        const worksheet = XLSX.utils.json_to_sheet(cleanedResponses);
+        const worksheet = XLSX.utils.json_to_sheet(responses);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "SurveyData");
         const excelBuffer = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
         saveAs(new Blob([excelBuffer]), "SurveyData.xlsx");
     };
 
+
     if (!responses.length) return <p>No data available</p>;
 
-    const columns = Array.from(
+    let columns = Array.from(
         new Set(responses.flatMap((row) => Object.keys(row)))
     );
 
+    // Ensure respid, createdAt, LastUpdate come first
+
+    const orderedStart = ["respid"];
+    const orderedNext = ["createdAt", "LastUpdate"];
+    columns = [
+        ...orderedStart,
+        ...orderedNext,
+        ...columns.filter((col) => ![...orderedStart, ...orderedNext].includes(col))
+    ];
 
     return (
         <div className="table-container">
