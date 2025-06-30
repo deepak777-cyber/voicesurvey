@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import '../styles/styles.css'
-import config from "@/config";
+const BASE_URL = import.meta.env.VITE_BASE_URL;
+console.log("API URL:", BASE_URL);
 
 const Login = ({ setIsAuth }) => {
     const navigate = useNavigate();
@@ -15,7 +16,7 @@ const Login = ({ setIsAuth }) => {
         setError("");
 
         try {
-            const res = await axios.post(`${config.API_BASE_URL}/api/auth/login`, {
+            const res = await axios.post(`${BASE_URL}/api/auth/login`, {
                 username,
                 password,
             });

@@ -3,13 +3,13 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import '../styles/styles.css'
-import config from "../config";
+const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const SurveyDataTable = () => {
     const [responses, setResponses] = useState([]);
 
     useEffect(() => {
-        axios.get(`${config.API_BASE_URL}/api/survey/responses`)
+        axios.get(`${BASE_URL}/api/survey/responses`)
             .then((res) => {
                 const cleaned = res.data.map(({ _id, __v, updatedAt, ...rest }) => {
                     const { respid, createdAt, ...others } = rest;
