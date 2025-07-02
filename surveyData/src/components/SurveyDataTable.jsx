@@ -3,12 +3,14 @@ import axios from "axios";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import "../styles/styles.css";
+import { useNavigate } from "react-router-dom";
 
 const BASE_URL = import.meta.env.VITE_BASE_URL;
 
 const SurveyDataTable = () => {
   const [responses, setResponses] = useState([]);
   const [downloadType, setDownloadType] = useState("label"); // "label" or "coded"
+  const navigate = useNavigate();
 
   useEffect(() => {
     axios
@@ -71,22 +73,31 @@ const SurveyDataTable = () => {
     ...columns.filter((col) => ![...orderedStart, ...orderedNext].includes(col)),
   ];
 
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("auth");
+    navigate("/");
+  };
+
+
   return (
     <div className="table-container">
       <h2 className="table-header">Survey Responses</h2>
 
       <div className="download-options">
         <div>
-          <label  htmlFor="downloadType">Download Type: </label>
+          <label htmlFor="downloadType">Download Type: </label>
           <select value={downloadType} onChange={(e) => setDownloadType(e.target.value)}>
             <option value="label">Label</option>
             <option value="coded">Coded</option>
           </select>
         </div>
-
-        <button className="download-btn" onClick={downloadExcel}>
-          Download as Excel
-        </button>
+        <div>
+          <button className="download-btn" onClick={downloadExcel}>
+            Download as Excel
+          </button>&nbsp;
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
+        </div>
       </div>
 
       <div className="table-scroll">

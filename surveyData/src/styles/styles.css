@@ -161,16 +161,19 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 10px;
+  flex-wrap: wrap;
+  gap: 10px;
 }
 
-/* Label styling */
+/* Label */
 .download-options label {
   font-weight: 500;
   margin-right: 10px;
   font-size: 16px;
 }
 
-/* Styled select */
+/* Select */
 .download-options select {
   padding: 8px 12px;
   border-radius: 6px;
@@ -182,9 +185,51 @@
   transition: border-color 0.3s;
 }
 
-/* On focus */
 .download-options select:focus {
   border-color: #007bff;
   outline: none;
   box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
 }
+
+/* Shared button style */
+.download-btn,
+.logout-btn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  color: #fff;
+}
+
+/* Download button color */
+.download-btn {
+  background-color: #28a745;
+}
+
+.download-btn:hover {
+  background-color: #218838;
+}
+
+/* Logout button color */
+.logout-btn {
+  background-color: #dc3545;
+}
+
+.logout-btn:hover {
+  background-color: #c82333;
+}
+@media (max-width: 600px) {
+  .download-options {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .download-btn,
+  .logout-btn {
+    width: 100%;
+  }
+}
+
