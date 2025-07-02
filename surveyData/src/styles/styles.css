@@ -156,3 +156,35 @@
 .data-table tr:nth-child(even) {
   background-color: #f9f9f9;
 }
+/* Container layout */
+.download-options {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Label styling */
+.download-options label {
+  font-weight: 500;
+  margin-right: 10px;
+  font-size: 16px;
+}
+
+/* Styled select */
+.download-options select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-size: 15px;
+  background-color: #fff;
+  color: #333;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+/* On focus */
+.download-options select:focus {
+  border-color: #007bff;
+  outline: none;
+  box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+}

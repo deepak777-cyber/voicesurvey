@@ -1027,11 +1027,11 @@ const Index = () => {
       return v.toString(16);
     });
   }
-
+  type SurveyAnswer = number | string | { value: number; label: string };
   const formatResponses = (answers: Answer[]) => {
     console.log("Formatting answers:", answers);
 
-    const formattedResponses: { [key: string]: number | string } = {};
+    const formattedResponses: { [key: string]: SurveyAnswer } = {};
 
     answers.forEach((answer) => {
       // Skip empty answers
@@ -1058,7 +1058,11 @@ const Index = () => {
           (opt) => opt.name === answer.answer.trim()
         );
         if (option) {
-          formattedResponses[`q${question.id}`] = option.value;
+          // formattedResponses[`q${question.id}`] = option.value;
+          formattedResponses[`q${question.id}`] = {
+            value: option.value,
+            label: option.name
+          };
         }
       } else {
         // For text and rating questions, store answer as-is
