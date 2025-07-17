@@ -1,0 +1,12 @@
+[
+  { "id": "1", "type": "text", "required": true },
+  { "id": "2", "type": "single-select", "required": true },
+  { "id": "3", "type": "single-select", "required": true },
+  { "id": "4", "type": "single-select", "required": true },
+  { "id": "5", "type": "single-select", "required": true },
+  { "id": "6", "type": "single-select", "required": true },
+  { "id": "7", "type": "single-select", "required": true },
+  { "id": "8", "type": "single-select", "required": true },
+  { "id": "9", "type": "text", "required": false },
+  { "id": "10", "type": "single-select", "required": true }
+]

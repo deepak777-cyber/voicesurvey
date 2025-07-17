@@ -1,0 +1,69 @@
+{
+  "1": { "question": "What is your name?" },
+  "2": {
+    "question": "How would you rate your overall experience with our service?",
+    "options": [
+      { "value": 1, "name": "Excellent" },
+      { "value": 2, "name": "Good" },
+      { "value": 3, "name": "Average" },
+      { "value": 4, "name": "Poor" },
+      { "value": 5, "name": "Very Poor" }
+    ]
+  },
+  "3": {
+    "question": "How satisfied are you with our customer service?",
+    "options": [
+      { "value": 1, "name": "Very Dissatisfied" },
+      { "value": 2, "name": "Dissatisfied" },
+      { "value": 3, "name": "Neutral" },
+      { "value": 4, "name": "Satisfied" },
+      { "value": 5, "name": "Very Satisfied" }
+    ]
+  },
+  "4": {
+    "question": "Do you find Customer Support valuable?",
+    "options": [
+      { "value": 1, "name": "Yes" },
+      { "value": 0, "name": "No" }
+    ]
+  },
+  "5": {
+    "question": "Do you find Easy to Use valuable?",
+    "options": [
+      { "value": 1, "name": "Yes" },
+      { "value": 0, "name": "No" }
+    ]
+  },
+  "6": {
+    "question": "Do you find Good Value valuable?",
+    "options": [
+      { "value": 1, "name": "Yes" },
+      { "value": 0, "name": "No" }
+    ]
+  },
+  "7": {
+    "question": "Do you find Fast Delivery valuable?",
+    "options": [
+      { "value": 1, "name": "Yes" },
+      { "value": 0, "name": "No" }
+    ]
+  },
+  "8": {
+    "question": "Do you find Quality Products valuable?",
+    "options": [
+      { "value": 1, "name": "Yes" },
+      { "value": 0, "name": "No" }
+    ]
+  },
+  "9": { "question": "What could we do to improve our service?" },
+  "10": {
+    "question": "How did you hear about us?",
+    "options": [
+      { "value": 1, "name": "Social Media" },
+      { "value": 2, "name": "Friend Referral" },
+      { "value": 3, "name": "Search Engine" },
+      { "value": 4, "name": "Advertisement" },
+      { "value": 5, "name": "Other" }
+    ]
+  }
+}

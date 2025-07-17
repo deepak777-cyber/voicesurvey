@@ -494,39 +494,39 @@ const Index = () => {
       const yesWords =
         currentLanguage === "en"
           ? [
-            "yes",
-            "yeah",
-            "yep",
-            "yup",
-            "correct",
-            "right",
-            "sure",
-            "okay",
-            "confirm",
-            "affirmative",
-          ]
+              "yes",
+              "yeah",
+              "yep",
+              "yup",
+              "correct",
+              "right",
+              "sure",
+              "okay",
+              "confirm",
+              "affirmative",
+            ]
           : [
-            "បាទ",
-            "ចាស",
-            "បាទចាស",
-            "បាទ/ចាស",
-            "បញ្ជាក់",
-            "ត្រឹមត្រូវ",
-            "ព្រម",
-            "យល់ព្រម",
-          ];
+              "បាទ",
+              "ចាស",
+              "បាទចាស",
+              "បាទ/ចាស",
+              "បញ្ជាក់",
+              "ត្រឹមត្រូវ",
+              "ព្រម",
+              "យល់ព្រម",
+            ];
 
       const noWords =
         currentLanguage === "en"
           ? ["no", "nope", "nah", "incorrect", "wrong", "negative"]
           : [
-            "ទេ",
-            "មិនបញ្ជាក់",
-            "ថតឡើងវិញ",
-            "មិនត្រឹមត្រូវ",
-            "មិនព្រម",
-            "មិនយល់ព្រម",
-          ];
+              "ទេ",
+              "មិនបញ្ជាក់",
+              "ថតឡើងវិញ",
+              "មិនត្រឹមត្រូវ",
+              "មិនព្រម",
+              "មិនយល់ព្រម",
+            ];
 
       // Find if options are yes/no (in any language)
       const yesOption = currentQuestion.options.find((opt) =>
@@ -1101,7 +1101,6 @@ const Index = () => {
       ...formattedResponses,
     };
 
-
     console.log("Saving incomplete response payload:", payload); // Debug log
 
     // Store unique_id and startTime in localStorage if not already present
@@ -1182,14 +1181,13 @@ const Index = () => {
     const payload = {
       unique_id: getOrCreateUniqueId(),
       sys_start_time: getOrCreateStartTime(),
-      sys_end_time: new Date().toISOString(),  // ✅ only now
+      sys_end_time: new Date().toISOString(), // ✅ only now
       sys_device: navigator.userAgent,
       survey_status: "completed",
       elapsed_time_in_second: calculateElapsedTime(),
       language: currentLanguage,
       ...formattedResponses,
     };
-
 
     console.log("Submitting payload:", payload);
 
@@ -1577,8 +1575,8 @@ const Index = () => {
                 ? "On"
                 : "បើក"
               : currentLanguage === "en"
-                ? "Off"
-                : "បិទ"}
+              ? "Off"
+              : "បិទ"}
           </Button>
 
           <Button
@@ -1594,8 +1592,8 @@ const Index = () => {
                 ? "Reading..."
                 : "កំពុងអាន..."
               : currentLanguage === "en"
-                ? "Read Question"
-                : "អានសំណួរ"}
+              ? "Read Question"
+              : "អានសំណួរ"}
           </Button>
         </div>
 
@@ -1679,8 +1677,8 @@ const Index = () => {
                 ? "Submit"
                 : "ដាក់ស្នើ"
               : currentLanguage === "en"
-                ? "Next"
-                : "បន្ទាប់"}
+              ? "Next"
+              : "បន្ទាប់"}
             <ArrowRight size={16} />
           </Button>
         </div>
